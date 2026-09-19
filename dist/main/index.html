@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Volume Mixer 2.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="main.css">
+</head>
+<body>
+  <header>
+    <h1>Volume Mixer 2.0</h1>
+    <div id="connState" class="badge">checking&hellip;</div>
+  </header>
+
+  <section id="portSection">
+    <h2>Serial connection</h2>
+    <div class="row">
+      <select id="portSelect"></select>
+      <button id="refreshPorts">Refresh</button>
+      <button id="connectBtn">Connect</button>
+    </div>
+    <p class="hint" id="portHint"></p>
+  </section>
+
+  <section id="banksSection">
+    <h2>Channel assignments</h2>
+    <p class="hint">Assign apps to channels from the overlay (click a channel's name while it's expanded). This is a live read-only overview.</p>
+    <div id="banks"></div>
+  </section>
+
+  <footer>
+    <p class="hint">Closing this window keeps Volume Mixer running in the tray. Right-click the tray icon to quit.</p>
+  </footer>
+
+<script src="main.js"></script>
+</body>
+</html>

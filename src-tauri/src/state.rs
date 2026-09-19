@@ -1,0 +1,138 @@
+use crate::audio::AudioBackend;
+use crate::config::{ConfigStore, BANK_COUNT, CHANNEL_COUNT};
+use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use tauri::{AppHandle, Emitter};
+
+pub const STATE_EVENT: &str = "overlay-state";
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ChannelPayload {
+    pub app_id: Option<String>,
+    pub app_name: Option<String>,
+    pub volume: u8,
+    pub muted: bool,
+    pub bg_color: Option<String>,
+    pub sel_color: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct OverlayPayload {
+    pub connected: bool,
+    pub expanded: bool,
+    pub bank: usize,
+    pub channel: usize,
+    pub banks: Vec<Vec<ChannelPayload>>,
+}
+
+#[derive(Debug)]
+pub struct RuntimeState {
+    pub expanded: bool,
+    pub bank: usize,
+    pub channel: usize,
+    pub muted: [[bool; CHANNEL_COUNT]; BANK_COUNT],
+    /// Last known live volume per slot (0-100). Only the active bank's
+    /// values are driven by real knob ticks; the rest hold their last value.
+    pub volumes: [[u8; CHANNEL_COUNT]; BANK_COUNT],
+}
+
+impl RuntimeState {
+    /// Restores the last-saved bank/channel/mute state so the overlay comes
+    /// back exactly where it was left, across app restarts. Always starts
+    /// collapsed regardless of what was saved — the HUD shouldn't pop up
+    /// expanded (and non-click-through) the moment the app launches.
+    fn from_config(cfg: &crate::config::AppConfig) -> Self {
+        Self {
+            expanded: false,
+            bank: cfg.last_bank.min(BANK_COUNT - 1),
+            channel: cfg.last_channel.min(CHANNEL_COUNT - 1),
+            muted: cfg.muted,
+            volumes: Default::default(),
+        }
+    }
+}
+
+pub struct AppState {
+    pub config: ConfigStore,
+    pub audio: Box<dyn AudioBackend>,
+    pub runtime: Mutex<RuntimeState>,
+    pub connected: AtomicBool,
+    /// True while the frontend has a mouse-only panel open (the app
+    /// dropdown or the per-channel color settings). While true, hardware
+    /// nav/button input is still read (to keep its own debounce timing
+    /// consistent) but not applied — otherwise a joystick nudge (or just
+    /// drift) mid-drag yanks the bank/channel out from under an open panel
+    /// and closes it on you.
+    pub ui_busy: AtomicBool,
+}
+
+impl AppState {
+    pub fn new(config: ConfigStore, audio: Box<dyn AudioBackend>) -> Self {
+        let runtime = RuntimeState::from_config(&config.get());
+        // Windows itself keeps a session's mute flag as long as that
+        // session survives, but re-apply on our end too in case the app
+        // producing audio was restarted independently of us.
+        for (b, bank) in config.get().banks.iter().enumerate() {
+            for (c, chan) in bank.iter().enumerate() {
+                if runtime.muted[b][c] {
+                    if let Some(app_id) = &chan.app_id {
+                        audio.set_mute(app_id, true);
+                    }
+                }
+            }
+        }
+        Self {
+            config,
+            audio,
+            runtime: Mutex::new(runtime),
+            connected: AtomicBool::new(false),
+            ui_busy: AtomicBool::new(false),
+        }
+    }
+
+    pub fn set_connected(&self, connected: bool) {
+        self.connected.store(connected, Ordering::Relaxed);
+    }
+
+    pub fn is_connected(&self) -> bool {
+        self.connected.load(Ordering::Relaxed)
+    }
+
+    pub fn build_payload(&self) -> OverlayPayload {
+        let cfg = self.config.get();
+        let runtime = self.runtime.lock().unwrap();
+        let mut banks = Vec::with_capacity(BANK_COUNT);
+        for b in 0..BANK_COUNT {
+            let mut chans = Vec::with_capacity(CHANNEL_COUNT);
+            for c in 0..CHANNEL_COUNT {
+                let cc = &cfg.banks[b][c];
+                chans.push(ChannelPayload {
+                    app_id: cc.app_id.clone(),
+                    app_name: cc.app_name.clone(),
+                    volume: if cc.app_id.is_some() {
+                        runtime.volumes[b][c]
+                    } else {
+                        0
+                    },
+                    muted: runtime.muted[b][c],
+                    bg_color: cc.bg_color.clone(),
+                    sel_color: cc.sel_color.clone(),
+                });
+            }
+            banks.push(chans);
+        }
+        OverlayPayload {
+            connected: self.is_connected(),
+            expanded: runtime.expanded,
+            bank: runtime.bank,
+            channel: runtime.channel,
+            banks,
+        }
+    }
+
+    pub fn emit(&self, app: &AppHandle) {
+        let payload = self.build_payload();
+        let _ = app.emit(STATE_EVENT, payload);
+    }
+}

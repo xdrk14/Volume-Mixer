@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="overlay.css">
+</head>
+<body>
+  <div id="disconnected">NO DEVICE</div>
+  <div id="overlay" class="collapsed">
+    <div id="panel">
+      <div class="sweep"></div>
+      <div id="inner">
+        <div id="ticks"></div>
+        <div id="channelRow"><div id="selFrame"></div></div>
+        <div id="hint">joystick: &#8593;&#8595; bank &middot; &#8592;&#8594; channel &middot; click: mute &middot; dbl-click: close &nbsp;|&nbsp; mouse: click app name to assign</div>
+      </div>
+    </div>
+  </div>
+
+<script src="overlay.js"></script>
+</body>
+</html>

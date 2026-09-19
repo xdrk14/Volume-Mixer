@@ -1,0 +1,38 @@
+:root{
+  --bg:#0b0c10; --panel:#15171d; --panel2:#1b1e26; --line:#262931;
+  --text:#eef1f4; --dim:#6d717c; --dim2:#3d4049;
+  --accent:#ffb454; --lowc:#35d399; --midc:#ffcf5c; --hotc:#ff5f5f;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;}
+body{
+  font-family:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  color:var(--text); background:var(--bg); padding:22px 28px 40px;
+}
+h1{font-size:16px;letter-spacing:.04em;margin:0;}
+h2{font-size:12px;letter-spacing:.06em;color:var(--dim);text-transform:uppercase;margin:0 0 10px;}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;}
+.badge{font-size:11px;padding:4px 10px;border-radius:3px;border:1px solid var(--line);color:var(--dim);letter-spacing:.05em;}
+.badge.ok{color:var(--lowc);border-color:var(--lowc);}
+.badge.bad{color:var(--hotc);border-color:var(--hotc);}
+section{margin-bottom:28px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px 18px;}
+.row{display:flex;gap:8px;align-items:center;}
+select, button{
+  font-family:inherit;font-size:12px;background:var(--panel2);color:var(--text);
+  border:1px solid var(--line);border-radius:4px;padding:7px 10px;
+}
+select{flex:1;}
+button{cursor:pointer;}
+button:hover{border-color:var(--accent);color:var(--accent);}
+.hint{font-size:10.5px;color:var(--dim2);margin:8px 0 0;letter-spacing:.02em;}
+#banks{display:flex;flex-direction:column;gap:10px;margin-top:12px;}
+.bankRow{display:flex;align-items:center;gap:10px;}
+.bankTag{width:64px;font-size:10px;color:var(--dim);letter-spacing:.06em;flex-shrink:0;}
+.bankTag.active{color:var(--accent);}
+.chips{display:flex;gap:8px;flex-wrap:wrap;}
+.chip{font-size:10.5px;padding:5px 9px;border-radius:3px;border:1px solid var(--line);
+  color:var(--dim);background:var(--panel2);}
+.chip.assigned{color:var(--text);}
+.chip.muted{color:var(--hotc);border-color:var(--hotc);}
+.chip.selected{border-color:var(--accent);color:var(--accent);}
+footer{margin-top:8px;}
