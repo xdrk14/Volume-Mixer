@@ -54,7 +54,8 @@ function buildChannelDom(p) {
   const bankChans = p.banks[p.bank];
   bankChans.forEach((ch, i) => {
     const el = document.createElement('div');
-    el.className = 'chan' + (ch.app_id ? '' : ' empty') + (i === p.channel ? ' selected' : '') + (ch.muted ? ' muted' : '');
+    el.className = 'chan' + (ch.app_id ? '' : ' empty') + (i === p.channel ? ' selected' : '')
+      + (ch.muted ? ' muted' : '') + (ch.solo ? ' solo' : '');
     el.dataset.i = i;
     let segsHtml = '';
     for (let s = 0; s < SEGS; s++) segsHtml += `<div class="seg" data-s="${s}"></div>`;
@@ -65,7 +66,8 @@ function buildChannelDom(p) {
         <div class="name">${ch.app_name ? escapeHtml(ch.app_name) : 'assign'}</div>
       </div>
       <div class="meter">${segsHtml}<div class="peakLine"></div></div>
-      <div class="muteBtn">${ch.muted ? 'muted' : 'mute'}</div>`;
+      <div class="muteBtn">${ch.muted ? 'muted' : 'mute'}</div>
+      <div class="soloBtn">solo</div>`;
     const editing = editingColor && editingColor.bank === p.bank && editingColor.channel === i;
     el.style.background = (editing ? editingColor.bg : ch.bg_color) || '';
     channelRowEl.appendChild(el);
@@ -89,6 +91,7 @@ function updateChannelStatic(p) {
     el.classList.toggle('empty', !ch.app_id);
     el.classList.toggle('selected', i === p.channel);
     el.classList.toggle('muted', !!ch.muted);
+    el.classList.toggle('solo', !!ch.solo);
     const editing = editingColor && editingColor.bank === p.bank && editingColor.channel === i;
     el.style.background = (editing ? editingColor.bg : ch.bg_color) || '';
     el.querySelector('.logo').textContent = iconGlyph(ch.app_name);
@@ -143,8 +146,11 @@ function refreshSelectionAppearance(p) {
   const ch = p.banks[p.bank][p.channel];
   const editing = editingColor && editingColor.bank === p.bank && editingColor.channel === p.channel;
   const selColor = editing ? editingColor.sel : ch.sel_color;
-  selFrameEl.classList.toggle('muted', !!ch.muted);
-  if (!ch.muted && selColor) {
+  // solo and muted are mutually exclusive (soloing a channel un-mutes it),
+  // both override any custom selection color — same as muted always did
+  selFrameEl.classList.toggle('solo', !!ch.solo);
+  selFrameEl.classList.toggle('muted', !ch.solo && !!ch.muted);
+  if (!ch.solo && !ch.muted && selColor) {
     selFrameEl.style.borderColor = selColor;
     selFrameEl.style.background = selColor + '2a';
     selFrameEl.style.boxShadow = '0 0 14px ' + selColor + '55';

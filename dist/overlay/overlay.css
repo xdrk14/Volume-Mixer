@@ -3,6 +3,8 @@
   --text:#eef1f4; --dim:#6d717c; --dim2:#3d4049;
   --accent:#ffb454; --accentDim: rgba(255,180,84,.18);
   --lowc:#35d399; --midc:#ffcf5c; --hotc:#ff5f5f;
+  --soloc:#4da6ff; --soloDim: rgba(77,166,255,.18);
+  --gold:#ffd35a;
 }
 *{box-sizing:border-box;outline:none;-webkit-tap-highlight-color:transparent;}
 html,body{margin:0;height:100%;background:transparent;}
@@ -42,7 +44,7 @@ body{
     box-shadow .28s ease;
 }
 #overlay.expanded #panel{
-  width:360px;height:266px;border-radius:14px;
+  width:360px;height:300px;border-radius:14px;
   border-color:var(--line);opacity:1;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
 }
@@ -81,9 +83,47 @@ body{
 }
 #selFrame.muted{border-color:var(--hotc);background:rgba(255,95,95,.1);
   box-shadow:0 0 10px rgba(255,95,95,.32),inset 0 0 12px rgba(255,95,95,.08);}
+/* a soloed channel is never itself muted, so this and .muted above are
+   mutually exclusive — the JS side only ever applies one */
+#selFrame.solo{border-color:var(--soloc);background:rgba(77,166,255,.12);
+  box-shadow:0 0 10px rgba(77,166,255,.35),inset 0 0 12px rgba(77,166,255,.08);}
 
 .chan{width:70px;display:flex;flex-direction:column;align-items:center;position:relative;z-index:2;
-  padding:5px 3px;border-radius:6px;transition:background .12s;}
+  padding:5px 3px;border-radius:6px;transition:background .12s,box-shadow .15s,opacity .15s,filter .15s;}
+/* muted (whether by hand or forced by someone else's solo — the payload
+   doesn't distinguish, and visually it shouldn't need to) reads clearly
+   dimmed, not just a red badge easy to miss at a glance */
+.chan.muted{opacity:.5;filter:saturate(.75);}
+/* persistent blue ring on the card itself (not just selFrame) so a
+   soloed channel stays visibly marked even after you navigate away from
+   it, plus a warm gold ambient pulse + a diagonal shimmer sweeping across
+   the whole card (icon, name, meter, buttons) — a "this one's special"
+   treatment on top of the blue, Minecraft-enchant-glint style. */
+.chan.solo{
+  opacity:1;filter:none;
+  box-shadow:0 0 0 1.5px var(--soloc),0 0 8px rgba(77,166,255,.35),0 0 10px 1px rgba(255,211,90,.25);
+  animation:soloGlow 2.4s ease-in-out infinite;
+}
+.chan.solo::before{
+  content:'';position:absolute;inset:0;border-radius:6px;pointer-events:none;z-index:1;
+  background:linear-gradient(115deg,
+    transparent 0%, transparent 42%,
+    rgba(255,211,90,0) 46%,
+    rgba(255,241,190,.9) 50%,
+    rgba(255,211,90,0) 54%,
+    transparent 58%, transparent 100%);
+  background-size:240% 100%;
+  mix-blend-mode:screen;
+  animation:enchantGlint 2.6s linear infinite;
+}
+@keyframes soloGlow{
+  0%,100%{box-shadow:0 0 0 1.5px var(--soloc),0 0 8px rgba(77,166,255,.35),0 0 10px 1px rgba(255,211,90,.25);}
+  50%{box-shadow:0 0 0 1.5px var(--soloc),0 0 10px rgba(77,166,255,.45),0 0 18px 3px rgba(255,211,90,.5);}
+}
+@keyframes enchantGlint{
+  0%{background-position:140% 0;}
+  100%{background-position:-140% 0;}
+}
 .assignArea{cursor:pointer;display:flex;flex-direction:column;align-items:center;padding:2px 4px;border-radius:4px;transition:background .1s;}
 .assignArea:hover{background:rgba(255,255,255,.06);}
 .assignArea:hover .name{color:var(--text);}
@@ -95,6 +135,7 @@ body{
 .chan.empty .name{color:var(--dim2);}
 .chan.selected .name{color:var(--accent);text-shadow:0 0 6px rgba(255,180,84,.6);}
 .chan.selected.muted .name{color:var(--hotc);text-shadow:0 0 6px rgba(255,95,95,.6);}
+.chan.solo .name{color:var(--soloc);text-shadow:0 0 6px rgba(77,166,255,.6);}
 
 #appDropdown{position:fixed;background:rgba(3,3,4,.98);backdrop-filter:blur(10px);
   border:1px solid var(--line);
@@ -136,11 +177,13 @@ body{
 .peakLine{position:absolute;left:2px;right:2px;height:1px;background:var(--text);opacity:.75;
   box-shadow:0 0 4px rgba(255,255,255,.5);}
 
-.muteBtn{font-size:9px;width:46px;text-align:center;border:1px solid var(--line);border-radius:2px;
+.muteBtn,.soloBtn{font-size:9px;width:46px;text-align:center;border:1px solid var(--line);border-radius:2px;
   padding:2px 0;color:var(--dim);letter-spacing:.05em;
   transition:opacity .12s,color .1s,border-color .1s,text-shadow .1s;}
-.chan.empty .muteBtn{opacity:0;pointer-events:none;}
+.soloBtn{margin-top:5px;}
+.chan.empty .muteBtn,.chan.empty .soloBtn{opacity:0;pointer-events:none;}
 .chan.muted .muteBtn{color:var(--hotc);border-color:var(--hotc);text-shadow:0 0 6px rgba(255,95,95,.55);}
+.chan.solo .soloBtn{color:var(--soloc);border-color:var(--soloc);text-shadow:0 0 6px rgba(77,166,255,.55);}
 .flash .meter{animation:flash .16s ease-out;}
 @keyframes flash{ 0%{filter:brightness(2.6);} 100%{filter:brightness(1);} }
 

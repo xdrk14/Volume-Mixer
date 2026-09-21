@@ -68,6 +68,7 @@ function renderBanks(p) {
       const classes = ['chip'];
       if (ch.app_id) classes.push('assigned');
       if (ch.muted) classes.push('muted');
+      if (ch.solo) classes.push('solo');
       if (b === p.bank && c === p.channel) classes.push('selected');
       chip.className = classes.join(' ');
       chip.textContent = ch.app_name ? ch.app_name : 'empty';

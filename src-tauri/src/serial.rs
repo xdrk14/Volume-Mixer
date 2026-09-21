@@ -1,5 +1,5 @@
-use crate::config::{BANK_COUNT, CHANNEL_COUNT};
-use crate::state::AppState;
+use crate::config::{AppConfig, BANK_COUNT, CHANNEL_COUNT};
+use crate::state::{AppState, RuntimeState};
 use crate::window;
 use std::io::{BufRead, BufReader};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,7 +9,10 @@ use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
 const REPEAT_MS: u64 = 340;
-const DBLCLICK_MS: u64 = 320;
+/// How long each stage of the hold-cycle lasts. Held past one step it
+/// becomes Mute, past two it's Solo, past three back to Normal, then it
+/// repeats — quick click (release before the first step) still closes.
+const CYCLE_STEP_MS: u64 = 500;
 const BAUD_RATE: u32 = 115_200;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,12 +102,19 @@ fn dir_from_y(y: YAxis) -> Option<Dir> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CycleStage {
+    Mute,
+    Solo,
+    Normal,
+}
+
 #[derive(Clone, Copy, Debug)]
 enum ButtonAction {
     None,
     Expand,
     Close,
-    ToggleMute,
+    CycleTo(CycleStage),
 }
 
 struct NavState {
@@ -112,7 +122,17 @@ struct NavState {
     last_dir: Option<Dir>,
     last_fire_at: Instant,
     btn_prev: bool,
-    press_pending_at: Option<Instant>,
+    /// When the current button-down press started, while held on an
+    /// already-expanded overlay.
+    press_started_at: Option<Instant>,
+    /// Which step of the Mute -> Solo -> Normal -> (repeats) cycle is
+    /// currently applied for this hold, if the hold has reached the first
+    /// step yet. `None` means still under CYCLE_STEP_MS — a release here
+    /// is a quick click (closes), not a hold.
+    cycle_step: Option<u64>,
+    /// True when the current press is the one that opened the overlay —
+    /// releasing that same press shouldn't *also* immediately close it.
+    opened_this_press: bool,
 }
 
 impl NavState {
@@ -122,7 +142,9 @@ impl NavState {
             last_dir: None,
             last_fire_at: Instant::now(),
             btn_prev: false,
-            press_pending_at: None,
+            press_started_at: None,
+            cycle_step: None,
+            opened_this_press: false,
         }
     }
 }
@@ -176,32 +198,118 @@ fn step_nav(nav: &mut NavState, frame: &HwFrame, now: Instant) -> Option<Dir> {
     None
 }
 
-/// Press-edge (0->1) driven, per spec: while collapsed, expand immediately;
-/// while expanded, wait out a double-click window before muting so a
-/// close-via-double-click never fires a mute on the way.
+/// Pure hold-duration, no directional push needed: collapsed -> a quick
+/// press expands immediately and *sticks open* (no auto-hide). Expanded ->
+/// a quick click (released before the first CYCLE_STEP_MS) closes; holding
+/// past that steps live through Mute -> Solo -> Normal -> Mute -> ... every
+/// CYCLE_STEP_MS, applying each stage as it's reached so you can listen
+/// for the one you want and just let go — whatever stage is active when
+/// you release is what sticks. Releasing the very press that opened the
+/// overlay never also closes it (that's what made it feel like you had to
+/// keep holding just to see it stay open).
 fn step_button(nav: &mut NavState, frame: &HwFrame, now: Instant, expanded: bool) -> ButtonAction {
     let mut action = ButtonAction::None;
     let pressed_edge = frame.btn && !nav.btn_prev;
+    let released_edge = !frame.btn && nav.btn_prev;
 
     if pressed_edge {
         if !expanded {
             action = ButtonAction::Expand;
-            nav.press_pending_at = None;
-        } else if nav.press_pending_at.is_some() {
-            nav.press_pending_at = None;
-            action = ButtonAction::Close;
+            nav.opened_this_press = true;
+            nav.press_started_at = None; // this press already did its job; don't also start the cycle timer
         } else {
-            nav.press_pending_at = Some(now);
+            nav.opened_this_press = false;
+            nav.press_started_at = Some(now);
         }
-    } else if let Some(pending_at) = nav.press_pending_at {
-        if now.duration_since(pending_at) >= Duration::from_millis(DBLCLICK_MS) {
-            nav.press_pending_at = None;
-            action = ButtonAction::ToggleMute;
+        nav.cycle_step = None;
+    } else if frame.btn && expanded {
+        if let Some(started) = nav.press_started_at {
+            let elapsed_ms = now.duration_since(started).as_millis() as u64;
+            if elapsed_ms >= CYCLE_STEP_MS {
+                let step = (elapsed_ms - CYCLE_STEP_MS) / CYCLE_STEP_MS;
+                if nav.cycle_step != Some(step) {
+                    nav.cycle_step = Some(step);
+                    let stage = match step % 3 {
+                        0 => CycleStage::Mute,
+                        1 => CycleStage::Solo,
+                        _ => CycleStage::Normal,
+                    };
+                    action = ButtonAction::CycleTo(stage);
+                }
+            }
         }
+    } else if released_edge {
+        if !nav.opened_this_press && nav.cycle_step.is_none() && expanded {
+            action = ButtonAction::Close;
+        }
+        nav.press_started_at = None;
+        nav.cycle_step = None;
+        nav.opened_this_press = false;
     }
 
     nav.btn_prev = frame.btn;
     action
+}
+
+/// Forces the selected channel to an absolute Mute / Solo / Normal state
+/// (not a toggle — the hold-cycle needs to set a specific stage each step,
+/// not flip whatever was there before). Solo mutes every other assigned
+/// channel across all banks and remembers the real baseline so Mute/Normal
+/// can cleanly restore it; only that baseline is ever persisted.
+fn apply_cycle_stage(
+    state: &Arc<AppState>,
+    runtime: &mut RuntimeState,
+    cfg: &AppConfig,
+    b: usize,
+    c: usize,
+    stage: CycleStage,
+) {
+    if cfg.banks[b][c].app_id.is_none() {
+        return;
+    }
+
+    match stage {
+        CycleStage::Solo => {
+            if runtime.solo != Some((b, c)) {
+                let current = runtime.muted;
+                let baseline = *runtime.pre_solo_muted.get_or_insert(current);
+                runtime.muted = baseline;
+                for bb in 0..BANK_COUNT {
+                    for cc in 0..CHANNEL_COUNT {
+                        if cfg.banks[bb][cc].app_id.is_some() {
+                            runtime.muted[bb][cc] = !(bb == b && cc == c);
+                        }
+                    }
+                }
+                runtime.solo = Some((b, c));
+            }
+        }
+        CycleStage::Mute | CycleStage::Normal => {
+            if runtime.solo.is_some() {
+                if let Some(baseline) = runtime.pre_solo_muted.take() {
+                    runtime.muted = baseline;
+                }
+                runtime.solo = None;
+            }
+            runtime.muted[b][c] = stage == CycleStage::Mute;
+        }
+    }
+
+    // apply the live effective mute to every assigned session across all
+    // banks — solo affects audio that's playing right now regardless of
+    // which bank the HUD has active
+    for bb in 0..BANK_COUNT {
+        for cc in 0..CHANNEL_COUNT {
+            if let Some(app_id) = &cfg.banks[bb][cc].app_id {
+                state.audio.set_mute(app_id, runtime.muted[bb][cc]);
+            }
+        }
+    }
+    // only the baseline (what mute would be with no solo active) is
+    // persisted — never the solo-forced mutes, so a restart never leaves
+    // channels silently muted with no solo indicator to explain why
+    let persisted = runtime.pre_solo_muted.unwrap_or(runtime.muted);
+    state.config.update(|cfg| cfg.muted = persisted);
 }
 
 fn process_frame(app: &AppHandle, state: &Arc<AppState>, nav: &mut NavState, frame: HwFrame) {
@@ -220,7 +328,10 @@ fn process_frame(app: &AppHandle, state: &Arc<AppState>, nav: &mut NavState, fra
     let ui_busy = state.ui_busy.load(std::sync::atomic::Ordering::Relaxed);
 
     let dir = step_nav(nav, &frame, now);
-    if runtime.expanded && !ui_busy {
+    // Navigation only applies from a "bare" joystick push — while the
+    // button is also held down (mid hold-cycle, see step_button), any
+    // stick drift shouldn't change which channel the cycle is targeting.
+    if runtime.expanded && !ui_busy && !frame.btn {
         if let Some(d) = dir {
             let (prev_bank, prev_channel) = (runtime.bank, runtime.channel);
             match d {
@@ -239,9 +350,9 @@ fn process_frame(app: &AppHandle, state: &Arc<AppState>, nav: &mut NavState, fra
         }
     }
 
-    // Still stepped every tick regardless of ui_busy so its own press-edge/
-    // double-click timing doesn't get confused by a gap in ticks — only
-    // whether the resulting action gets *applied* is gated.
+    // Still stepped every tick regardless of ui_busy so its own press-edge
+    // timing doesn't get confused by a gap in ticks — only whether the
+    // resulting action gets *applied* is gated.
     let action = step_button(nav, &frame, now, runtime.expanded);
     if !ui_busy {
         match action {
@@ -253,15 +364,10 @@ fn process_frame(app: &AppHandle, state: &Arc<AppState>, nav: &mut NavState, fra
                 runtime.expanded = false;
                 window::set_overlay_expanded(app, false);
             }
-            ButtonAction::ToggleMute => {
+            ButtonAction::CycleTo(stage) => {
                 let b = runtime.bank;
                 let c = runtime.channel;
-                if let Some(app_id) = cfg.banks[b][c].app_id.clone() {
-                    runtime.muted[b][c] = !runtime.muted[b][c];
-                    state.audio.set_mute(&app_id, runtime.muted[b][c]);
-                    let muted_snapshot = runtime.muted;
-                    state.config.update(|cfg| cfg.muted = muted_snapshot);
-                }
+                apply_cycle_stage(state, &mut runtime, &cfg, b, c, stage);
             }
             ButtonAction::None => {}
         }

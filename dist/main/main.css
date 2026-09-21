@@ -1,7 +1,7 @@
 :root{
   --bg:#0b0c10; --panel:#15171d; --panel2:#1b1e26; --line:#262931;
   --text:#eef1f4; --dim:#6d717c; --dim2:#3d4049;
-  --accent:#ffb454; --lowc:#35d399; --midc:#ffcf5c; --hotc:#ff5f5f;
+  --accent:#ffb454; --lowc:#35d399; --midc:#ffcf5c; --hotc:#ff5f5f; --soloc:#4da6ff;
 }
 *{box-sizing:border-box;}
 html,body{margin:0;height:100%;}
@@ -34,5 +34,6 @@ button:hover{border-color:var(--accent);color:var(--accent);}
   color:var(--dim);background:var(--panel2);}
 .chip.assigned{color:var(--text);}
 .chip.muted{color:var(--hotc);border-color:var(--hotc);}
+.chip.solo{color:var(--soloc);border-color:var(--soloc);}
 .chip.selected{border-color:var(--accent);color:var(--accent);}
 footer{margin-top:8px;}

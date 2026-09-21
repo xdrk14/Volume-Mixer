@@ -9,7 +9,7 @@ navigating banks/channels without touching the mouse.
 
 - `arduino/mixer_firmware.ino` — reference copy of the flashed firmware (docs only, not built by this project)
 - `src-tauri/` — Rust backend
-  - `src/serial.rs` — serial read loop, protocol parsing, joystick debounce/axis-lock/repeat, button click/double-click/mute-timer logic
+  - `src/serial.rs` — serial read loop, protocol parsing, joystick debounce/axis-lock/repeat, button click-to-close / hold-to-cycle-mute-solo-normal logic
   - `src/audio/` — `AudioBackend` trait + the Windows Core Audio (WASAPI) implementation
   - `src/config.rs` — persisted config (last COM port, per-channel app assignment + colors)
   - `src/state.rs` — shared runtime state, the `overlay-state` event payload
@@ -56,9 +56,9 @@ npx @tauri-apps/cli icon path/to/source-1024.png
 3. The app tries to auto-connect to whatever COM port was used last (persisted in the app's config file). On first run there's nothing saved yet, so:
    - Open the main window (tray icon → Show, if it's hidden).
    - Under **Serial connection**, hit **Refresh**, pick the Nano's port, and click **Connect**. It's remembered for next launch.
-4. The overlay HUD appears top-center of the screen as a small `BANK 1` pill. Click the joystick to expand it.
+4. The overlay HUD sits invisible top-center of the screen at rest (click-through, nothing drawn). Click the joystick to morph it open.
 5. While expanded, click a channel's name to assign it to a running app's audio session (only apps currently producing audio show up), or the gear icon to set a per-channel background/selection color.
-6. Navigate with the joystick (↑↓ bank, ←→ channel), click to mute the selected channel, double-click to collapse. Knobs 1–4 always control the volume of whichever 4 channels belong to the active bank.
+6. Navigate with the joystick (↑↓ bank, ←→ channel). A quick click closes the overlay. Holding the button on the selected channel steps live through Mute → Solo (mutes every other assigned channel across all banks) → Normal → Mute → ... every ~500ms — listen for the stage you want and let go; whatever's active when you release is what sticks. Knobs 1–4 always control the volume of whichever 4 channels belong to the active bank.
 
 ## Known limitations (by design, not bugs)
 

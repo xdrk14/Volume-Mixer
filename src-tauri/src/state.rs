@@ -13,6 +13,9 @@ pub struct ChannelPayload {
     pub app_name: Option<String>,
     pub volume: u8,
     pub muted: bool,
+    /// True only for the one channel currently soloed (if any) — see
+    /// `RuntimeState::solo`.
+    pub solo: bool,
     pub bg_color: Option<String>,
     pub sel_color: Option<String>,
 }
@@ -31,7 +34,20 @@ pub struct RuntimeState {
     pub expanded: bool,
     pub bank: usize,
     pub channel: usize,
+    /// Live effective mute per slot — what's actually applied to audio and
+    /// shown in the UI. While `solo` is active this includes the
+    /// solo-forced mutes on every other channel; `pre_solo_muted` holds
+    /// the real baseline underneath so it can be restored.
     pub muted: [[bool; CHANNEL_COUNT]; BANK_COUNT],
+    /// The one (bank, channel) currently soloed, if any. Solo is global —
+    /// it mutes every other assigned channel across all banks, not just
+    /// the active one, since an app's Windows audio session keeps playing
+    /// regardless of which bank the HUD currently has active.
+    pub solo: Option<(usize, usize)>,
+    /// Snapshot of `muted` from just before solo engaged. `None` when no
+    /// solo is active. This is the config's persisted baseline — solo
+    /// itself is a momentary audition tool and is never persisted.
+    pub pre_solo_muted: Option<[[bool; CHANNEL_COUNT]; BANK_COUNT]>,
     /// Last known live volume per slot (0-100). Only the active bank's
     /// values are driven by real knob ticks; the rest hold their last value.
     pub volumes: [[u8; CHANNEL_COUNT]; BANK_COUNT],
@@ -48,6 +64,8 @@ impl RuntimeState {
             bank: cfg.last_bank.min(BANK_COUNT - 1),
             channel: cfg.last_channel.min(CHANNEL_COUNT - 1),
             muted: cfg.muted,
+            solo: None,
+            pre_solo_muted: None,
             volumes: Default::default(),
         }
     }
@@ -116,6 +134,7 @@ impl AppState {
                         0
                     },
                     muted: runtime.muted[b][c],
+                    solo: runtime.solo == Some((b, c)),
                     bg_color: cc.bg_color.clone(),
                     sel_color: cc.sel_color.clone(),
                 });
