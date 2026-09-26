@@ -4,7 +4,7 @@ use crate::serial::{self, SerialManager};
 use crate::state::{AppState, OverlayPayload};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 #[tauri::command]
 pub fn get_serial_ports() -> Vec<String> {
@@ -34,6 +34,19 @@ pub fn get_config(state: State<'_, Arc<AppState>>) -> AppConfig {
 #[tauri::command]
 pub fn list_audio_sessions(state: State<'_, Arc<AppState>>) -> Vec<AudioSessionInfo> {
     state.audio.list_sessions()
+}
+
+#[tauri::command]
+pub fn get_appearance(state: State<'_, Arc<AppState>>) -> serde_json::Value {
+    state.config.get().appearance
+}
+
+/// Saves the overlay look and tells every window, so the overlay restyles
+/// live while the settings window's sliders move.
+#[tauri::command]
+pub fn set_appearance(app: AppHandle, state: State<'_, Arc<AppState>>, appearance: serde_json::Value) {
+    state.config.update(|cfg| cfg.appearance = appearance.clone());
+    let _ = app.emit(crate::state::APPEARANCE_EVENT, appearance);
 }
 
 /// The frontend calls this while the app-assignment dropdown or the

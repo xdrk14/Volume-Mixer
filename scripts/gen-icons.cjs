@@ -1,6 +1,6 @@
 // One-off placeholder icon generator (no deps). Produces solid-color square
 // PNGs at the sizes Tauri expects, plus a minimal .ico wrapping a PNG frame.
-// Run: node scripts/gen-icons.js
+// Run: node scripts/gen-icons.cjs
 // Replace these with real artwork later — `npm run tauri icon <source.png>`
 // (via @tauri-apps/cli) regenerates the whole set from one 1024x1024 source.
 const fs = require('fs');

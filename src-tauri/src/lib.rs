@@ -1,4 +1,5 @@
 mod audio;
+mod capture;
 mod commands;
 mod config;
 mod serial;
@@ -31,6 +32,7 @@ pub fn run() {
             app.manage(serial_mgr);
 
             tray::build(&app_handle)?;
+            capture::start(app_handle.clone(), app_state.clone());
 
             window::position_overlay_top_center(&app_handle);
             // starts collapsed: click-through so it never blocks the game underneath
@@ -63,6 +65,8 @@ pub fn run() {
             commands::assign_channel,
             commands::set_channel_colors,
             commands::set_ui_busy,
+            commands::get_appearance,
+            commands::set_appearance,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

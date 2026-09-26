@@ -32,6 +32,11 @@ pub struct AppConfig {
     pub last_channel: usize,
     #[serde(default)]
     pub muted: [[bool; CHANNEL_COUNT]; BANK_COUNT],
+    /// Overlay look (theme, glass, motion, fonts, per-app colors). Owned
+    /// entirely by the frontend — the backend just stores and relays it, so
+    /// new appearance options never need a Rust change.
+    #[serde(default)]
+    pub appearance: serde_json::Value,
 }
 
 impl Default for AppConfig {
@@ -42,6 +47,7 @@ impl Default for AppConfig {
             last_bank: 0,
             last_channel: 0,
             muted: Default::default(),
+            appearance: serde_json::Value::Null,
         }
     }
 }

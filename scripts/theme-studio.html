@@ -1,0 +1,400 @@
+<title>Overlay Theme Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    color-scheme: dark;
+    --page-bg:#0b0c10;
+    --page-panel:#131419;
+    --page-panel2:#181a21;
+    --page-line:#25272f;
+    --page-text:#eef0f3;
+    --page-dim:#888d99;
+    --page-dim2:#4b4e58;
+    --ok:#35d399;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:auto;}
+  body{
+    margin:0;
+    background:var(--page-bg);
+    color:var(--page-text);
+    font-family:'Manrope',ui-sans-serif,system-ui,sans-serif;
+    padding:36px 20px 56px;
+  }
+  .page{max-width:1040px;margin:0 auto;}
+
+  header{margin-bottom:32px;}
+  .eyebrow{
+    font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--page-dim);
+    text-transform:uppercase;margin-bottom:10px;
+  }
+  h1{font-size:30px;font-weight:800;letter-spacing:-.01em;margin:0 0 8px;}
+  .sub{font-size:14.5px;color:var(--page-dim);max-width:56ch;line-height:1.55;margin:0;}
+
+  .layout{display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start;}
+  @media (max-width:760px){ .layout{grid-template-columns:1fr;} }
+
+  .themeList{
+    display:flex;flex-direction:column;gap:8px;
+    background:var(--page-panel);border:1px solid var(--page-line);border-radius:14px;
+    padding:10px;
+  }
+  .themeCard{
+    display:flex;align-items:center;gap:11px;
+    padding:10px 11px;border-radius:10px;border:1px solid transparent;
+    background:transparent;cursor:pointer;text-align:left;font-family:inherit;
+    color:var(--page-text);transition:background .12s,border-color .12s;
+  }
+  .themeCard:hover{background:var(--page-panel2);}
+  .themeCard.active{background:var(--page-panel2);border-color:var(--page-line);}
+  .swatch{
+    width:34px;height:34px;border-radius:9px;flex-shrink:0;position:relative;overflow:hidden;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+  .swatch::after{
+    content:'';position:absolute;inset:0;border-radius:inherit;
+    background:radial-gradient(circle at 30% 25%, var(--sw-accent) 0%, transparent 55%);
+  }
+  .themeCard .meta{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .themeCard .name{font-size:13.5px;font-weight:700;}
+  .themeCard .desc{font-size:11px;color:var(--page-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .themeCard .check{
+    margin-left:auto;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--page-line);
+    flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  }
+  .themeCard.active .check{border-color:var(--ok);}
+  .themeCard.active .check::after{content:'';width:7px;height:7px;border-radius:50%;background:var(--ok);}
+
+  main.stage{
+    background:var(--page-panel);border:1px solid var(--page-line);border-radius:14px;
+    padding:16px;display:flex;flex-direction:column;gap:12px;
+  }
+  .stageLabel{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--page-dim);text-transform:uppercase;}
+  .deskBackdrop{
+    border-radius:10px;overflow:hidden;position:relative;min-height:340px;
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 8%, rgba(255,255,255,.05), transparent 60%),
+      linear-gradient(155deg, #1c2230 0%, #0a0c12 55%, #05060a 100%);
+    display:flex;align-items:flex-start;justify-content:center;padding:34px 16px 22px;
+  }
+  .deskHint{
+    position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+    font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.28);
+    letter-spacing:.05em;
+  }
+
+  /* ---- authentic port of the real overlay markup/CSS, driven by the vars below ---- */
+  #preview{
+    --accent:#ffb454; --bgTop:#08080a; --bgBot:#000000; --radius:14px; --glow:.6;
+    font-family:'JetBrains Mono',ui-monospace,monospace; color:#eef1f4;
+  }
+  .ovPanel{
+    background:linear-gradient(180deg,var(--bgTop),var(--bgBot));
+    border:1px solid rgba(255,255,255,.09);
+    border-radius:var(--radius);padding:14px 18px 12px;position:relative;overflow:hidden;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+    width:346px;max-width:100%;
+  }
+  .ovTicks{display:flex;gap:5px;justify-content:center;margin-bottom:14px;}
+  .ovTick{width:34px;height:3px;border-radius:2px;background:#3d4049;}
+  .ovTick.active{background:var(--accent);box-shadow:0 0 6px color-mix(in srgb, var(--accent) 70%, transparent);}
+  .ovChannelRow{display:flex;gap:14px;position:relative;padding-top:2px;justify-content:center;}
+  .ovSelFrame{
+    position:absolute;top:-6px;left:0;width:70px;height:174px;
+    border:1.5px solid var(--accent);border-radius:calc(var(--radius) * .55);
+    background:color-mix(in srgb, var(--accent) 12%, transparent);pointer-events:none;
+  }
+  .ovSelFrame::after{
+    content:'';position:absolute;inset:-4px;border-radius:inherit;
+    box-shadow:0 0 14px color-mix(in srgb, var(--accent) 60%, transparent);
+    opacity:var(--glow);
+  }
+  .ovChan{
+    width:70px;display:flex;flex-direction:column;align-items:center;position:relative;z-index:2;
+    padding:5px 3px;border-radius:calc(var(--radius) * .45);
+  }
+  .ovChan.muted{opacity:.5;filter:saturate(.75);}
+  .ovChan.solo{
+    box-shadow:0 0 0 1.5px #4da6ff,0 0 8px rgba(77,166,255,.35),0 0 10px 1px rgba(255,211,90,.25);
+    animation:ovSoloGlow 2.4s ease-in-out infinite;
+  }
+  .ovChan.solo::before{
+    content:'';position:absolute;inset:0;border-radius:calc(var(--radius) * .45);pointer-events:none;z-index:1;
+    background:linear-gradient(115deg,transparent 0%,transparent 42%,rgba(255,211,90,0) 46%,
+      rgba(255,241,190,.9) 50%,rgba(255,211,90,0) 54%,transparent 58%,transparent 100%);
+    background-size:240% 100%;mix-blend-mode:screen;animation:ovGlint 2.6s linear infinite;
+  }
+  @keyframes ovSoloGlow{
+    0%,100%{box-shadow:0 0 0 1.5px #4da6ff,0 0 8px rgba(77,166,255,.35),0 0 10px 1px rgba(255,211,90,.25);}
+    50%{box-shadow:0 0 0 1.5px #4da6ff,0 0 10px rgba(77,166,255,.45),0 0 18px 3px rgba(255,211,90,.5);}
+  }
+  @keyframes ovGlint{ 0%{background-position:140% 0;} 100%{background-position:-140% 0;} }
+  .ovLogo{font-size:19px;line-height:1;margin-bottom:4px;}
+  .ovChan.empty .ovLogo{opacity:.2;}
+  .ovName{font-size:9px;color:#6d717c;height:11px;margin-bottom:6px;letter-spacing:.02em;}
+  .ovChan.empty .ovName{color:#3d4049;}
+  .ovChan.selected .ovName{color:var(--accent);text-shadow:0 0 6px color-mix(in srgb, var(--accent) 70%, transparent);}
+  .ovChan.selected.muted .ovName{color:#ff5f5f;text-shadow:0 0 6px rgba(255,95,95,.6);}
+  .ovChan.solo .ovName{color:#4da6ff;text-shadow:0 0 6px rgba(77,166,255,.6);}
+  .ovMeter{width:16px;height:96px;display:flex;flex-direction:column-reverse;gap:2px;
+    background:#020203;border:1px solid rgba(255,255,255,.08);border-radius:2px;padding:2px;margin-bottom:8px;position:relative;}
+  .ovSeg{width:100%;flex:1;border-radius:1px;background:#20222a;}
+  .ovSeg.lo{background:#35d399;box-shadow:0 0 4px #35d399;}
+  .ovSeg.mid{background:#ffcf5c;box-shadow:0 0 4px #ffcf5c;}
+  .ovSeg.hi{background:#ff5f5f;box-shadow:0 0 4px #ff5f5f;}
+  .ovBtn,.ovBtn2{font-size:9px;width:46px;text-align:center;border:1px solid rgba(255,255,255,.14);
+    border-radius:2px;padding:2px 0;color:#6d717c;letter-spacing:.05em;}
+  .ovBtn2{margin-top:5px;}
+  .ovChan.empty .ovBtn,.ovChan.empty .ovBtn2{opacity:0;}
+  .ovChan.muted .ovBtn{color:#ff5f5f;border-color:#ff5f5f;text-shadow:0 0 6px rgba(255,95,95,.55);}
+  .ovChan.solo .ovBtn2{color:#4da6ff;border-color:#4da6ff;text-shadow:0 0 6px rgba(77,166,255,.55);}
+  .ovHint{margin-top:12px;font-size:9px;color:#3d4049;text-align:center;letter-spacing:.03em;}
+
+  .tune{
+    margin-top:20px;background:var(--page-panel);border:1px solid var(--page-line);border-radius:14px;
+    padding:18px 20px 20px;
+  }
+  .tune h2{font-size:13px;font-weight:700;margin:0 0 4px;}
+  .tune .tuneSub{font-size:12px;color:var(--page-dim);margin:0 0 16px;}
+  .tuneGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+  @media (max-width:640px){ .tuneGrid{grid-template-columns:repeat(2,1fr);} }
+  .tuneField{display:flex;flex-direction:column;gap:8px;}
+  .tuneField label{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--page-dim);text-transform:uppercase;}
+  .tuneField .row{display:flex;align-items:center;gap:8px;}
+  .tuneField input[type=color]{
+    width:36px;height:30px;border-radius:6px;border:1px solid var(--page-line);background:none;padding:0;cursor:pointer;
+  }
+  .tuneField input[type=range]{width:100%;accent-color:var(--ok);}
+  .tuneVal{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--page-dim);min-width:34px;text-align:right;
+    font-variant-numeric:tabular-nums;}
+  .resetBtn{
+    margin-top:16px;background:var(--page-panel2);border:1px solid var(--page-line);color:var(--page-text);
+    font-family:inherit;font-size:12px;font-weight:700;padding:8px 14px;border-radius:8px;cursor:pointer;
+  }
+  .resetBtn:hover{border-color:var(--page-dim);}
+  .note{margin-top:14px;font-size:11.5px;color:var(--page-dim2);line-height:1.6;max-width:64ch;}
+</style>
+
+<div class="page">
+  <header>
+    <div class="eyebrow">Settings · Appearance</div>
+    <h1>Overlay theme</h1>
+    <p class="sub">Pick a look for the HUD, or start from one and fine-tune it below. The preview is a live copy of the real overlay panel — mute, solo, and selection all animate exactly like they do on screen.</p>
+  </header>
+
+  <div class="layout">
+    <aside class="themeList" id="themeList" role="listbox" aria-label="Overlay themes"></aside>
+
+    <main class="stage">
+      <div class="stageLabel">Live preview</div>
+      <div class="deskBackdrop">
+        <div id="preview">
+          <div class="ovPanel">
+            <div class="ovInner">
+              <div class="ovTicks">
+                <div class="ovTick"></div><div class="ovTick active"></div><div class="ovTick"></div>
+              </div>
+              <div class="ovChannelRow">
+                <div class="ovSelFrame"></div>
+                <div class="ovChan selected">
+                  <div class="ovLogo">🌐</div>
+                  <div class="ovName">Brave</div>
+                  <div class="ovMeter">
+                    <div class="ovSeg hi"></div><div class="ovSeg mid"></div><div class="ovSeg lo"></div>
+                    <div class="ovSeg lo"></div><div class="ovSeg lo"></div><div class="ovSeg"></div>
+                    <div class="ovSeg"></div><div class="ovSeg"></div><div class="ovSeg"></div><div class="ovSeg"></div>
+                  </div>
+                  <div class="ovBtn">mute</div>
+                  <div class="ovBtn2">solo</div>
+                </div>
+                <div class="ovChan muted">
+                  <div class="ovLogo">🎵</div>
+                  <div class="ovName">Spotify</div>
+                  <div class="ovMeter">
+                    <div class="ovSeg lo"></div><div class="ovSeg"></div><div class="ovSeg"></div>
+                    <div class="ovSeg"></div><div class="ovSeg"></div><div class="ovSeg"></div>
+                    <div class="ovSeg"></div><div class="ovSeg"></div><div class="ovSeg"></div><div class="ovSeg"></div>
+                  </div>
+                  <div class="ovBtn">muted</div>
+                  <div class="ovBtn2">solo</div>
+                </div>
+                <div class="ovChan solo">
+                  <div class="ovLogo">🎮</div>
+                  <div class="ovName">Discord</div>
+                  <div class="ovMeter">
+                    <div class="ovSeg lo"></div><div class="ovSeg lo"></div><div class="ovSeg lo"></div>
+                    <div class="ovSeg"></div><div class="ovSeg"></div><div class="ovSeg"></div>
+                    <div class="ovSeg"></div><div class="ovSeg"></div><div class="ovSeg"></div><div class="ovSeg"></div>
+                  </div>
+                  <div class="ovBtn">mute</div>
+                  <div class="ovBtn2">solo</div>
+                </div>
+                <div class="ovChan empty">
+                  <div class="ovLogo">＋</div>
+                  <div class="ovName">assign</div>
+                  <div class="ovMeter">
+                    <div class="ovSeg"></div><div class="ovSeg"></div><div class="ovSeg"></div>
+                    <div class="ovSeg"></div><div class="ovSeg"></div><div class="ovSeg"></div>
+                    <div class="ovSeg"></div><div class="ovSeg"></div><div class="ovSeg"></div><div class="ovSeg"></div>
+                  </div>
+                  <div class="ovBtn">mute</div>
+                  <div class="ovBtn2">solo</div>
+                </div>
+              </div>
+              <div class="ovHint">joystick: &#8593;&#8595; bank &middot; &#8592;&#8594; channel</div>
+            </div>
+          </div>
+        </div>
+        <div class="deskHint">BANK 2 &middot; over-desktop preview</div>
+      </div>
+    </main>
+  </div>
+
+  <section class="tune">
+    <h2>Fine-tune</h2>
+    <p class="tuneSub">Layered on top of whichever theme is selected. Mute (red) and solo (blue/gold) stay fixed — they're status colors, not decoration.</p>
+    <div class="tuneGrid">
+      <div class="tuneField">
+        <label for="tuneAccent">Accent</label>
+        <div class="row"><input type="color" id="tuneAccent"></div>
+      </div>
+      <div class="tuneField">
+        <label for="tuneBg">Background</label>
+        <div class="row"><input type="color" id="tuneBg"></div>
+      </div>
+      <div class="tuneField">
+        <label for="tuneRadius">Corner radius</label>
+        <div class="row"><input type="range" id="tuneRadius" min="2" max="24" step="1"><span class="tuneVal" id="tuneRadiusVal"></span></div>
+      </div>
+      <div class="tuneField">
+        <label for="tuneGlow">Glow intensity</label>
+        <div class="row"><input type="range" id="tuneGlow" min="0" max="100" step="5"><span class="tuneVal" id="tuneGlowVal"></span></div>
+      </div>
+    </div>
+    <button class="resetBtn" id="resetBtn" type="button">Reset to theme default</button>
+    <p class="note">In the real app this maps to the per-channel background/selection colors already in the settings panel, plus a new global accent + corner radius + glow slider — this page is the design pass before that lands in the Rust/Tauri build.</p>
+  </section>
+</div>
+
+<script>
+(function(){
+  var THEMES = [
+    { id:'amber',    name:'Amber HUD',   desc:'Warm instrument panel — the default',
+      accent:'#ffb454', bg:'#08080a', radius:14, glow:60 },
+    { id:'glacier',  name:'Glacier',     desc:'Cold, precise, high-altitude',
+      accent:'#6fd3ff', bg:'#050810', radius:10, glow:50 },
+    { id:'terminal', name:'Terminal',    desc:'Phosphor green, sharp corners',
+      accent:'#52ff9e', bg:'#000000', radius:4,  glow:75 },
+    { id:'vapor',    name:'Vaporwave',   desc:'Magenta glow, soft and dreamy',
+      accent:'#ff6ec7', bg:'#0d0518', radius:20, glow:80 },
+    { id:'graphite', name:'Graphite',    desc:'Silver on charcoal, restrained',
+      accent:'#d7dbe2', bg:'#101113', radius:8,  glow:30 },
+    { id:'custom',   name:'Custom',      desc:'Your own accent and background',
+      accent:'#ffb454', bg:'#08080a', radius:14, glow:60 }
+  ];
+
+  var listEl = document.getElementById('themeList');
+  var previewEl = document.getElementById('preview');
+  var accentInput = document.getElementById('tuneAccent');
+  var bgInput = document.getElementById('tuneBg');
+  var radiusInput = document.getElementById('tuneRadius');
+  var glowInput = document.getElementById('tuneGlow');
+  var radiusVal = document.getElementById('tuneRadiusVal');
+  var glowVal = document.getElementById('tuneGlowVal');
+
+  var state = { themeId:'amber', accent:'#ffb454', bg:'#08080a', radius:14, glow:60 };
+
+  function loadSaved(){
+    try {
+      var raw = localStorage.getItem('vm2-theme-studio');
+      if (!raw) return;
+      var saved = JSON.parse(raw);
+      if (saved && typeof saved === 'object') Object.assign(state, saved);
+    } catch (e) {}
+  }
+  function persist(){
+    try { localStorage.setItem('vm2-theme-studio', JSON.stringify(state)); } catch (e) {}
+  }
+
+  function darkenBottom(hex){
+    // simple stop for the panel gradient's darker edge — pure black works for
+    // every accent, keeps the gradient readable regardless of bg hue
+    return '#000000';
+  }
+
+  function applyPreview(){
+    previewEl.style.setProperty('--accent', state.accent);
+    previewEl.style.setProperty('--bgTop', state.bg);
+    previewEl.style.setProperty('--bgBot', darkenBottom(state.bg));
+    previewEl.style.setProperty('--radius', state.radius + 'px');
+    previewEl.style.setProperty('--glow', (state.glow / 100).toFixed(2));
+  }
+
+  function syncControls(){
+    accentInput.value = state.accent;
+    bgInput.value = state.bg;
+    radiusInput.value = state.radius;
+    glowInput.value = state.glow;
+    radiusVal.textContent = state.radius + 'px';
+    glowVal.textContent = state.glow + '%';
+  }
+
+  function renderList(){
+    listEl.innerHTML = '';
+    THEMES.forEach(function(t){
+      var card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'themeCard' + (t.id === state.themeId ? ' active' : '');
+      card.setAttribute('role', 'option');
+      card.setAttribute('aria-selected', t.id === state.themeId ? 'true' : 'false');
+      card.innerHTML =
+        '<div class="swatch" style="--sw-accent:' + t.accent + ';background:' + t.bg + '"></div>' +
+        '<div class="meta"><div class="name">' + t.name + '</div><div class="desc">' + t.desc + '</div></div>' +
+        '<div class="check"></div>';
+      card.addEventListener('click', function(){ selectTheme(t.id); });
+      listEl.appendChild(card);
+    });
+  }
+
+  function selectTheme(id){
+    var t = THEMES.filter(function(x){ return x.id === id; })[0];
+    if (!t) return;
+    state.themeId = id;
+    state.accent = t.accent;
+    state.bg = t.bg;
+    state.radius = t.radius;
+    state.glow = t.glow;
+    renderList();
+    syncControls();
+    applyPreview();
+    persist();
+  }
+
+  function onTune(){
+    state.accent = accentInput.value;
+    state.bg = bgInput.value;
+    state.radius = parseInt(radiusInput.value, 10);
+    state.glow = parseInt(glowInput.value, 10);
+    radiusVal.textContent = state.radius + 'px';
+    glowVal.textContent = state.glow + '%';
+    applyPreview();
+    persist();
+  }
+
+  accentInput.addEventListener('input', onTune);
+  bgInput.addEventListener('input', onTune);
+  radiusInput.addEventListener('input', onTune);
+  glowInput.addEventListener('input', onTune);
+
+  document.getElementById('resetBtn').addEventListener('click', function(){
+    selectTheme(state.themeId);
+  });
+
+  loadSaved();
+  renderList();
+  syncControls();
+  applyPreview();
+})();
+</script>

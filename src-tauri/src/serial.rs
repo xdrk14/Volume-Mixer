@@ -1,5 +1,5 @@
 use crate::config::{AppConfig, BANK_COUNT, CHANNEL_COUNT};
-use crate::state::{AppState, RuntimeState};
+use crate::state::{AppState, HoldInfo, RuntimeState};
 use crate::window;
 use std::io::{BufRead, BufReader};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,10 +9,11 @@ use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
 const REPEAT_MS: u64 = 340;
-/// How long each stage of the hold-cycle lasts. Held past one step it
-/// becomes Mute, past two it's Solo, past three back to Normal, then it
-/// repeats — quick click (release before the first step) still closes.
-const CYCLE_STEP_MS: u64 = 500;
+/// How long each step of the hold-cycle lasts. The cycle order is
+/// Normal -> Mute -> Solo -> Normal, and a hold always starts at the step
+/// *after* the channel's current state, so every step visibly changes
+/// something. A quick click (release before the first step) still closes.
+const CYCLE_STEP_MS: u64 = 1000;
 const BAUD_RATE: u32 = 115_200;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -104,9 +105,41 @@ fn dir_from_y(y: YAxis) -> Option<Dir> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CycleStage {
+    Normal,
     Mute,
     Solo,
-    Normal,
+}
+
+/// Cycle order. A hold starts at the entry after the channel's current one.
+const CYCLE: [CycleStage; 3] = [CycleStage::Normal, CycleStage::Mute, CycleStage::Solo];
+
+fn stage_name(stage: CycleStage) -> &'static str {
+    match stage {
+        CycleStage::Normal => "normal",
+        CycleStage::Mute => "mute",
+        CycleStage::Solo => "solo",
+    }
+}
+
+/// What the overlay needs to draw the hold countdown: how far through the
+/// current step, and which stage the next step lands on.
+fn hold_info(nav: &NavState, frame: &HwFrame, now: Instant, expanded: bool) -> Option<HoldInfo> {
+    if !frame.btn || !expanded {
+        return None;
+    }
+    let started = nav.press_started_at?;
+    let elapsed = now.duration_since(started).as_millis() as u64;
+    let stage_at = |step: u64| CYCLE[(nav.cycle_base + 1 + step as usize) % CYCLE.len()];
+    let next_step = nav.cycle_step.map(|s| s + 1).unwrap_or(0);
+    Some(HoldInfo {
+        progress: (elapsed % CYCLE_STEP_MS) as f32 / CYCLE_STEP_MS as f32,
+        next: stage_name(stage_at(next_step)),
+        current: nav.cycle_step.map(|s| stage_name(stage_at(s))),
+    })
+}
+
+fn stage_index(stage: CycleStage) -> usize {
+    CYCLE.iter().position(|s| *s == stage).unwrap_or(0)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -125,11 +158,13 @@ struct NavState {
     /// When the current button-down press started, while held on an
     /// already-expanded overlay.
     press_started_at: Option<Instant>,
-    /// Which step of the Mute -> Solo -> Normal -> (repeats) cycle is
-    /// currently applied for this hold, if the hold has reached the first
-    /// step yet. `None` means still under CYCLE_STEP_MS — a release here
+    /// Which step of the cycle is currently applied for this hold, if the
+    /// hold has reached the first step yet. `None` means still under CYCLE_STEP_MS — a release here
     /// is a quick click (closes), not a hold.
     cycle_step: Option<u64>,
+    /// The selected channel's stage when this hold began; steps count on
+    /// from here so the first step always changes something.
+    cycle_base: usize,
     /// True when the current press is the one that opened the overlay —
     /// releasing that same press shouldn't *also* immediately close it.
     opened_this_press: bool,
@@ -144,6 +179,7 @@ impl NavState {
             btn_prev: false,
             press_started_at: None,
             cycle_step: None,
+            cycle_base: 0,
             opened_this_press: false,
         }
     }
@@ -201,13 +237,18 @@ fn step_nav(nav: &mut NavState, frame: &HwFrame, now: Instant) -> Option<Dir> {
 /// Pure hold-duration, no directional push needed: collapsed -> a quick
 /// press expands immediately and *sticks open* (no auto-hide). Expanded ->
 /// a quick click (released before the first CYCLE_STEP_MS) closes; holding
-/// past that steps live through Mute -> Solo -> Normal -> Mute -> ... every
-/// CYCLE_STEP_MS, applying each stage as it's reached so you can listen
-/// for the one you want and just let go — whatever stage is active when
-/// you release is what sticks. Releasing the very press that opened the
-/// overlay never also closes it (that's what made it feel like you had to
-/// keep holding just to see it stay open).
-fn step_button(nav: &mut NavState, frame: &HwFrame, now: Instant, expanded: bool) -> ButtonAction {
+/// past that steps live through Normal -> Mute -> Solo -> Normal -> ...
+/// every CYCLE_STEP_MS, starting from the step after the channel's current
+/// state, applying each stage as it's reached so you can listen for the one
+/// you want and just let go. Releasing the very press that opened the
+/// overlay never also closes it.
+fn step_button(
+    nav: &mut NavState,
+    frame: &HwFrame,
+    now: Instant,
+    expanded: bool,
+    current: CycleStage,
+) -> ButtonAction {
     let mut action = ButtonAction::None;
     let pressed_edge = frame.btn && !nav.btn_prev;
     let released_edge = !frame.btn && nav.btn_prev;
@@ -220,6 +261,7 @@ fn step_button(nav: &mut NavState, frame: &HwFrame, now: Instant, expanded: bool
         } else {
             nav.opened_this_press = false;
             nav.press_started_at = Some(now);
+            nav.cycle_base = stage_index(current);
         }
         nav.cycle_step = None;
     } else if frame.btn && expanded {
@@ -229,11 +271,7 @@ fn step_button(nav: &mut NavState, frame: &HwFrame, now: Instant, expanded: bool
                 let step = (elapsed_ms - CYCLE_STEP_MS) / CYCLE_STEP_MS;
                 if nav.cycle_step != Some(step) {
                     nav.cycle_step = Some(step);
-                    let stage = match step % 3 {
-                        0 => CycleStage::Mute,
-                        1 => CycleStage::Solo,
-                        _ => CycleStage::Normal,
-                    };
+                    let stage = CYCLE[(nav.cycle_base + 1 + step as usize) % CYCLE.len()];
                     action = ButtonAction::CycleTo(stage);
                 }
             }
@@ -353,7 +391,16 @@ fn process_frame(app: &AppHandle, state: &Arc<AppState>, nav: &mut NavState, fra
     // Still stepped every tick regardless of ui_busy so its own press-edge
     // timing doesn't get confused by a gap in ticks — only whether the
     // resulting action gets *applied* is gated.
-    let action = step_button(nav, &frame, now, runtime.expanded);
+    let (sb, sc) = (runtime.bank, runtime.channel);
+    let current = if runtime.solo == Some((sb, sc)) {
+        CycleStage::Solo
+    } else if runtime.muted[sb][sc] {
+        CycleStage::Mute
+    } else {
+        CycleStage::Normal
+    };
+    let action = step_button(nav, &frame, now, runtime.expanded, current);
+    runtime.hold = hold_info(nav, &frame, now, runtime.expanded);
     if !ui_busy {
         match action {
             ButtonAction::Expand => {
@@ -446,4 +493,148 @@ pub fn list_ports() -> Vec<String> {
     serialport::available_ports()
         .map(|ports| ports.into_iter().map(|p| p.port_name).collect())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::{AudioBackend, AudioSessionInfo};
+    use crate::config::ConfigStore;
+    use std::time::Duration;
+
+    fn f(x: XAxis, y: YAxis, btn: bool) -> HwFrame {
+        HwFrame { k: [50, 50, 50, 50], x, y, btn }
+    }
+    fn idle(btn: bool) -> HwFrame {
+        f(XAxis::Neutral, YAxis::Neutral, btn)
+    }
+    fn ms(t0: Instant, n: u64) -> Instant {
+        t0 + Duration::from_millis(n)
+    }
+
+    #[test]
+    fn parses_good_lines_and_drops_torn_ones() {
+        let fr = parse_line("34,78,12,55,NEUTRAL,UP,0\r\n").expect("valid line");
+        assert_eq!(fr.k, [34, 78, 12, 55]);
+        assert_eq!(fr.x, XAxis::Neutral);
+        assert_eq!(fr.y, YAxis::Up);
+        assert!(!fr.btn);
+        assert!(parse_line("34,78,12,55,NEUTRAL,UP").is_none(), "6 fields");
+        assert!(parse_line("34,78,12,55,NEUTRAL,UP,0,9").is_none(), "8 fields");
+        assert!(parse_line("34,78,1").is_none(), "torn line");
+        assert!(parse_line("101,0,0,0,NEUTRAL,NEUTRAL,0").is_none(), "knob over 100");
+        assert!(parse_line("0,0,0,0,SIDEWAYS,NEUTRAL,0").is_none(), "bad x label");
+        assert!(parse_line("0,0,0,0,NEUTRAL,NEUTRAL,2").is_none(), "bad button");
+    }
+
+    #[test]
+    fn press_opens_and_its_release_does_not_close() {
+        let mut nav = NavState::new();
+        let t0 = Instant::now();
+        assert!(matches!(step_button(&mut nav, &idle(true), t0, false, CycleStage::Normal), ButtonAction::Expand));
+        // the same press is released after the overlay is open: must stay open
+        assert!(matches!(step_button(&mut nav, &idle(false), ms(t0, 120), true, CycleStage::Normal), ButtonAction::None));
+    }
+
+    #[test]
+    fn quick_click_while_open_closes() {
+        let mut nav = NavState::new();
+        let t0 = Instant::now();
+        assert!(matches!(step_button(&mut nav, &idle(true), t0, true, CycleStage::Normal), ButtonAction::None));
+        assert!(matches!(step_button(&mut nav, &idle(false), ms(t0, 200), true, CycleStage::Normal), ButtonAction::Close));
+    }
+
+    fn hold_sequence(start: CycleStage) -> Vec<CycleStage> {
+        let mut nav = NavState::new();
+        let t0 = Instant::now();
+        step_button(&mut nav, &idle(true), t0, true, start);
+        let mut got = vec![];
+        let mut t = 50;
+        while t <= 3100 {
+            if let ButtonAction::CycleTo(s) = step_button(&mut nav, &idle(true), ms(t0, t), true, start) {
+                got.push(s);
+            }
+            t += 50;
+        }
+        // releasing after a hold that fired must not close the overlay
+        assert!(matches!(step_button(&mut nav, &idle(false), ms(t0, t), true, start), ButtonAction::None));
+        got
+    }
+
+    #[test]
+    fn hold_cycles_one_step_per_second_from_normal() {
+        assert_eq!(hold_sequence(CycleStage::Normal), vec![CycleStage::Mute, CycleStage::Solo, CycleStage::Normal]);
+    }
+
+    #[test]
+    fn hold_starts_after_the_current_state() {
+        assert_eq!(hold_sequence(CycleStage::Mute), vec![CycleStage::Solo, CycleStage::Normal, CycleStage::Mute]);
+        assert_eq!(hold_sequence(CycleStage::Solo), vec![CycleStage::Normal, CycleStage::Mute, CycleStage::Solo]);
+    }
+
+    #[test]
+    fn hold_info_reports_next_stage() {
+        let mut nav = NavState::new();
+        let t0 = Instant::now();
+        step_button(&mut nav, &idle(true), t0, true, CycleStage::Normal);
+        let h = hold_info(&nav, &idle(true), ms(t0, 500), true).expect("holding");
+        assert_eq!(h.next, "mute");
+        assert!(h.current.is_none());
+        assert!((h.progress - 0.5).abs() < 0.01);
+        assert!(hold_info(&nav, &idle(false), ms(t0, 500), true).is_none());
+    }
+
+    #[test]
+    fn nav_locks_to_one_axis_and_repeats() {
+        let mut nav = NavState::new();
+        let t0 = Instant::now();
+        assert_eq!(step_nav(&mut nav, &f(XAxis::Right, YAxis::Neutral, false), t0), Some(Dir::NextChannel));
+        // Y pushed while X is still locked: ignored
+        assert_eq!(step_nav(&mut nav, &f(XAxis::Right, YAxis::Up, false), ms(t0, 50)), None);
+        // still held past the repeat interval: fires again
+        assert_eq!(step_nav(&mut nav, &f(XAxis::Right, YAxis::Up, false), ms(t0, 400)), Some(Dir::NextChannel));
+        // X released: lock clears, Y can now fire
+        assert_eq!(step_nav(&mut nav, &f(XAxis::Neutral, YAxis::Neutral, false), ms(t0, 450)), None);
+        assert_eq!(step_nav(&mut nav, &f(XAxis::Neutral, YAxis::Up, false), ms(t0, 500)), Some(Dir::PrevBank));
+    }
+
+    struct NoAudio;
+    impl AudioBackend for NoAudio {
+        fn list_sessions(&self) -> Vec<AudioSessionInfo> { vec![] }
+        fn set_volume(&self, _: &str, _: f32) {}
+        fn set_mute(&self, _: &str, _: bool) {}
+    }
+
+    fn test_state() -> Arc<AppState> {
+        let dir = std::env::temp_dir().join(format!("vm2-test-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = ConfigStore::load(dir);
+        store.update(|c| {
+            c.banks[0][0].app_id = Some("brave".into());
+            c.banks[0][1].app_id = Some("spotify".into());
+            c.banks[1][0].app_id = Some("discord".into());
+            c.muted[0][1] = true; // spotify starts muted
+        });
+        Arc::new(AppState::new(store, Box::new(NoAudio)))
+    }
+
+    #[test]
+    fn solo_mutes_every_bank_and_restores_the_baseline() {
+        let state = test_state();
+        let cfg = state.config.get();
+        let mut rt = state.runtime.lock().unwrap();
+
+        apply_cycle_stage(&state, &mut rt, &cfg, 0, 0, CycleStage::Solo);
+        assert_eq!(rt.solo, Some((0, 0)));
+        assert!(!rt.muted[0][0], "soloed channel plays");
+        assert!(rt.muted[0][1] && rt.muted[1][0], "every other assigned channel, in every bank, is muted");
+        assert!(!rt.muted[0][2], "empty slots are left alone");
+
+        apply_cycle_stage(&state, &mut rt, &cfg, 0, 0, CycleStage::Normal);
+        assert_eq!(rt.solo, None);
+        assert!(rt.muted[0][1], "spotify's own mute comes back");
+        assert!(!rt.muted[1][0], "discord goes back to unmuted");
+        drop(rt);
+        assert!(state.config.get().muted[0][1] && !state.config.get().muted[1][0], "only the baseline is persisted");
+    }
 }

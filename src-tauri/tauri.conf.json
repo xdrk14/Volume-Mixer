@@ -13,10 +13,10 @@
         "label": "main",
         "title": "Volume Mixer 2.0",
         "url": "main/index.html",
-        "width": 900,
-        "height": 620,
-        "minWidth": 700,
-        "minHeight": 460,
+        "width": 1120,
+        "height": 780,
+        "minWidth": 760,
+        "minHeight": 560,
         "visible": true,
         "decorations": true,
         "resizable": true,
@@ -27,7 +27,7 @@
         "title": "Volume Mixer 2.0 Overlay",
         "url": "overlay/index.html",
         "width": 560,
-        "height": 340,
+        "height": 430,
         "x": 0,
         "y": 0,
         "visible": true,
@@ -43,7 +43,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

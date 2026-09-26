@@ -1,0 +1,409 @@
+<title>Glass Cockpit Redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    color-scheme: dark;
+    --page-bg:#08090c; --page-panel:#111217; --page-line:#22242b;
+    --page-text:#eceef2; --page-dim:#8b909b;
+    --sans:'Geist',ui-sans-serif,system-ui,-apple-system,sans-serif;
+    --mono:'Geist Mono',ui-monospace,'SF Mono',Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--page-bg);color:var(--page-text);font-family:var(--sans);padding-block:40px 64px;padding-inline:20px;}
+  .page{max-width:980px;margin:0 auto;}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--page-dim);text-transform:uppercase;margin-bottom:10px;}
+  h1{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:0 0 8px;text-wrap:balance;}
+  .sub{font-size:14.5px;color:var(--page-dim);max-width:62ch;line-height:1.6;margin:0 0 26px;}
+  h2{font-size:13px;font-weight:600;margin:0;}
+  .stageHead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap;}
+  .stageHead p{margin:4px 0 0;font-size:12px;color:var(--page-dim);}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;}
+  .btn{background:#16181e;border:1px solid var(--page-line);color:var(--page-text);font-family:var(--sans);
+    font-size:12px;font-weight:600;padding:8px 13px;border-radius:9px;cursor:pointer;}
+  .btn:hover{border-color:#3a3d47;}
+  .btn[aria-pressed="true"]{border-color:#ffb454;color:#ffcf95;}
+  .btn:focus-visible{outline:2px solid #ffb454;outline-offset:2px;}
+
+  .desk{position:relative;border-radius:16px;overflow:hidden;min-height:460px;
+    display:flex;justify-content:center;align-items:flex-start;padding:28px 16px 48px;background:#141524;}
+  #scene{position:absolute;inset:0;width:100%;height:100%;display:block;}
+  .deskCap{position:absolute;bottom:12px;left:16px;font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.45);letter-spacing:.05em;}
+
+  /* ================= LIQUID GLASS ================= */
+  .hud{--accent:#ffb454;--mute:#ff6a6a;--solo:#5cb6ff;--gold:#ffd66b;
+    position:relative;font-family:var(--sans);color:#f6f7fa;}
+
+  .glass{
+    position:relative;isolation:isolate;
+    /* frosted fallback, then the refracting SVG filter wins where supported */
+    backdrop-filter:blur(8px) saturate(170%);
+    -webkit-backdrop-filter:blur(8px) saturate(170%);
+  }
+  .refract .panel{backdrop-filter:url(#lgPanel);}
+  .refract .lens{backdrop-filter:url(#lgLens);}
+
+  .panel{
+    display:inline-flex;flex-direction:column;align-items:center;
+    padding:16px 18px 13px;border-radius:32px;
+    background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.015) 45%),rgba(12,13,20,.24);
+    /* thickness: bright lip top-left, softer return bottom-right, faint inner glow */
+    box-shadow:
+      inset 1.5px 1.5px 1px -.5px rgba(255,255,255,.55),
+      inset -1px -1px 1px -.5px rgba(255,255,255,.28),
+      inset 0 0 18px rgba(255,255,255,.06),
+      0 14px 34px -12px rgba(0,0,0,.55);
+    transform-origin:50% 0;
+  }
+  /* rim that catches light — plus a highlight that follows the pointer */
+  .panel::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;z-index:3;
+    background:linear-gradient(135deg,rgba(255,255,255,.7),rgba(255,255,255,.1) 28%,rgba(255,255,255,0) 55%,rgba(255,255,255,.25));
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;}
+  .panel::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:0;
+    background:radial-gradient(120px 90px at var(--mx,30%) var(--my,0%),rgba(255,255,255,.14),transparent 70%);}
+  .hud.collapsed .panel{opacity:0;pointer-events:none;}
+
+  .inner{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;transition:opacity .2s ease;}
+  .hud.collapsed .inner{opacity:0;}
+
+  .ticks{display:flex;gap:5px;margin-bottom:14px;}
+  .tick{width:22px;height:3px;border-radius:99px;background:rgba(255,255,255,.22);}
+  .tick.on{background:var(--accent);box-shadow:0 0 8px rgba(255,180,84,.6);}
+
+  .row{position:relative;display:flex;gap:8px;}
+
+  /* the selection drop: a small glass lens sitting ON TOP of the cards, so
+     it magnifies and bends whatever channel it's over */
+  .lens{position:absolute;top:0;left:0;z-index:4;pointer-events:none;border-radius:24px;
+    --lt:255,180,84;
+    background:linear-gradient(180deg,rgba(var(--lt),.10),rgba(var(--lt),.03));
+    box-shadow:
+      inset 1.5px 1.5px 1px -.5px rgba(255,255,255,.7),
+      inset -1px -1px 1px -.5px rgba(255,255,255,.35),
+      inset 0 0 0 1px rgba(var(--lt),.55),
+      inset 0 0 14px rgba(var(--lt),.18),
+      0 0 22px -4px rgba(var(--lt),.55);
+    transition:box-shadow .25s,background .25s;will-change:transform;}
+  .lens.onSolo{--lt:92,182,255;}
+  .lens.onMute{--lt:255,106,106;}
+
+  .ch{position:relative;z-index:1;width:70px;padding:10px 0 9px;border-radius:22px;
+    display:flex;flex-direction:column;align-items:center;cursor:pointer;transition:opacity .2s,filter .2s;}
+  .ch.muted{opacity:.45;filter:saturate(.55);}
+  .ch.empty{cursor:default;}
+  .ico{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;margin-bottom:7px;font-weight:600;font-size:15px;
+    background:linear-gradient(180deg,color-mix(in srgb,var(--tint) 70%,transparent),color-mix(in srgb,var(--tint) 30%,transparent));
+    box-shadow:inset 1px 1px 0 rgba(255,255,255,.45),inset 0 0 0 1px rgba(255,255,255,.1),0 4px 10px -4px color-mix(in srgb,var(--tint) 70%,transparent);}
+  .ch.empty .ico{background:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);color:rgba(255,255,255,.45);font-weight:400;}
+  .name{font-size:11px;font-weight:500;color:rgba(255,255,255,.82);line-height:1.2;text-shadow:0 1px 2px rgba(0,0,0,.35);}
+  .ch.sel .name{color:#ffd09a;}
+  .ch.solo .name{color:#a9d6ff;}
+  .ch.empty .name{color:rgba(255,255,255,.4);}
+  .val{font-family:var(--mono);font-size:9.5px;color:rgba(255,255,255,.5);margin:2px 0 8px;font-variant-numeric:tabular-nums;}
+  .ch.empty .val{visibility:hidden;}
+  .meter{width:14px;height:92px;border-radius:7px;padding:3px;display:flex;flex-direction:column-reverse;gap:2px;margin-bottom:9px;
+    background:rgba(0,0,0,.34);box-shadow:inset 0 1px 2px rgba(0,0,0,.5),inset 0 0 0 1px rgba(255,255,255,.06);}
+  .seg{flex:1;border-radius:2px;background:rgba(255,255,255,.08);}
+  .seg.g{background:#4ee39b;box-shadow:0 0 4px rgba(78,227,155,.7);}
+  .seg.y{background:#ffd66b;box-shadow:0 0 4px rgba(255,214,107,.7);}
+  .seg.r{background:#ff6a6a;box-shadow:0 0 4px rgba(255,106,106,.7);}
+  .pill{width:52px;height:18px;border-radius:99px;display:grid;place-items:center;
+    font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.55);
+    background:rgba(255,255,255,.06);box-shadow:inset 1px 1px 0 rgba(255,255,255,.18),inset 0 0 0 1px rgba(255,255,255,.08);}
+  .pill + .pill{margin-top:5px;}
+  .ch.empty .pill{visibility:hidden;}
+  .ch.muted .pill.m{color:#ffc2c2;background:rgba(255,106,106,.22);box-shadow:inset 1px 1px 0 rgba(255,255,255,.25),inset 0 0 0 1px rgba(255,106,106,.6);}
+  /* the Solo pill itself is "enchanted": its own dense glint on a short
+     loop, over a slowly breathing gold/violet base, so it reads as the
+     special button even at a glance */
+  .ch.solo .pill.s{position:relative;overflow:hidden;color:#fff6d6;text-shadow:0 0 6px rgba(255,214,107,.9);
+    background:linear-gradient(100deg,rgba(92,182,255,.35),rgba(150,110,255,.35),rgba(92,182,255,.35));
+    background-size:200% 100%;animation:enchantBase 3s ease-in-out infinite;
+    box-shadow:inset 1px 1px 0 rgba(255,255,255,.4),inset 0 0 0 1px rgba(255,214,107,.75),0 0 10px rgba(255,214,107,.55),0 0 16px -2px rgba(150,110,255,.6);}
+  .ch.solo .pill.s::before,.ch.solo .pill.s::after{content:'';position:absolute;inset:-2px;pointer-events:none;mix-blend-mode:screen;
+    background-size:300% 100%;animation:glint 1.4s linear infinite;}
+  .ch.solo .pill.s::before{background-image:linear-gradient(115deg,transparent 30%,rgba(255,240,180,.95) 45%,rgba(255,200,90,.6) 50%,transparent 62%);}
+  .ch.solo .pill.s::after{background-image:linear-gradient(115deg,transparent 40%,rgba(200,150,255,.7) 52%,transparent 64%);animation-delay:.7s;}
+  @keyframes enchantBase{0%,100%{background-position:0% 0;}50%{background-position:100% 0;}}
+
+  /* solo: blue ring + gold enchant glint sweeping the whole card */
+  .ch.solo{box-shadow:0 0 0 1px rgba(92,182,255,.6),0 0 16px -3px rgba(255,214,107,.6);animation:soloPulse 2.6s ease-in-out infinite;}
+  .ch.solo::before,.ch.solo::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:2;
+    background-size:260% 100%;mix-blend-mode:screen;animation:glint 2.8s linear infinite;}
+  .ch.solo::before{background-image:linear-gradient(118deg,transparent 38%,rgba(255,238,170,.6) 49%,rgba(255,200,90,.35) 52%,transparent 60%);}
+  .ch.solo::after{background-image:linear-gradient(118deg,transparent 45%,rgba(170,120,255,.22) 55%,transparent 66%);animation-delay:.9s;}
+  @keyframes glint{from{background-position:130% 0;}to{background-position:-130% 0;}}
+  @keyframes soloPulse{0%,100%{box-shadow:0 0 0 1px rgba(92,182,255,.55),0 0 14px -3px rgba(255,214,107,.45);}
+    50%{box-shadow:0 0 0 1px rgba(92,182,255,.75),0 0 22px -2px rgba(255,214,107,.75);}}
+
+  .hint{margin-top:11px;font-family:var(--mono);font-size:9px;color:rgba(255,255,255,.45);}
+
+  @media (prefers-reduced-motion:reduce){.ch.solo,.ch.solo::before,.ch.solo::after,.ch.solo .pill.s,.ch.solo .pill.s::before,.ch.solo .pill.s::after{animation:none;}}
+
+  /* ---------- guide ---------- */
+  .guide{margin-top:22px;background:var(--page-panel);border:1px solid var(--page-line);border-radius:16px;padding:20px;}
+  .guide > p{font-size:12.5px;color:var(--page-dim);margin:4px 0 16px;line-height:1.55;max-width:66ch;}
+  .spec{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--page-line);border-radius:10px;overflow:hidden;margin:0;}
+  @media (max-width:720px){.spec{grid-template-columns:1fr 1fr;}}
+  @media (max-width:460px){.spec{grid-template-columns:1fr;}}
+  .spec div{background:#0d0e12;padding:13px 14px;}
+  .spec dt{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--page-dim);margin-bottom:6px;}
+  .spec dd{margin:0;font-size:12.5px;line-height:1.6;}
+  .spec code,.perf code{font-family:var(--mono);font-size:11.5px;color:#ffc98a;}
+  .perf{margin:16px 0 0;padding-left:18px;font-size:12.5px;color:var(--page-dim);line-height:1.75;max-width:70ch;}
+  .perf b{color:var(--page-text);font-weight:600;}
+</style>
+
+<!-- refraction filters; their displacement maps are generated to each element's real size -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="lgPanel" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feImage id="lgPanelMap" x="0" y="0" width="10" height="10" preserveAspectRatio="none" result="map"/>
+    <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="soft"/>
+    <feDisplacementMap in="soft" in2="map" scale="46" xChannelSelector="R" yChannelSelector="G" result="bent"/>
+    <feColorMatrix in="bent" type="saturate" values="1.7"/>
+  </filter>
+  <filter id="lgLens" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feImage id="lgLensMap" x="0" y="0" width="10" height="10" preserveAspectRatio="none" result="map"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="26" xChannelSelector="R" yChannelSelector="G" result="bent"/>
+    <feColorMatrix in="bent" type="saturate" values="1.3"/>
+  </filter>
+</svg>
+
+<div class="page">
+  <div class="eyebrow">Overlay redesign · v4</div>
+  <h1>Glass cockpit</h1>
+  <p class="sub">This version refracts. The panel's edges bend the game behind them like thick glass, and the selection is a glass droplet sitting on top of the cards: it magnifies the channel under it and stretches as it slides. Click a channel, and turn refraction off to compare.</p>
+
+  <div class="stageHead">
+    <div>
+      <h2>Live preview</h2>
+      <p>Channels are clickable. Move the pointer over the panel to shift its highlight.</p>
+    </div>
+    <div class="controls">
+      <button class="btn" id="refractBtn" type="button" aria-pressed="true">Refraction on</button>
+      <button class="btn" id="toggleBtn" type="button">Collapse</button>
+    </div>
+  </div>
+
+  <div class="desk" id="desk">
+    <canvas id="scene" aria-hidden="true"></canvas>
+    <div class="hud refract" id="hud">
+      <div class="panel glass" id="panel">
+        <div class="inner">
+          <div class="ticks"><div class="tick"></div><div class="tick on"></div><div class="tick"></div></div>
+          <div class="row" id="row">
+            <div class="lens glass" id="lens"></div>
+
+            <div class="ch sel" data-i="0" style="--tint:#ff7a3d">
+              <div class="ico">B</div><div class="name">Brave</div><div class="val">72%</div>
+              <div class="meter"><div class="seg g"></div><div class="seg g"></div><div class="seg g"></div><div class="seg g"></div><div class="seg g"></div><div class="seg g"></div><div class="seg y"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div></div>
+              <div class="pill m">mute</div><div class="pill s">solo</div>
+            </div>
+            <div class="ch muted" data-i="1" style="--tint:#1ed760">
+              <div class="ico">S</div><div class="name">Spotify</div><div class="val">48%</div>
+              <div class="meter"><div class="seg g"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div></div>
+              <div class="pill m">muted</div><div class="pill s">solo</div>
+            </div>
+            <div class="ch solo" data-i="2" style="--tint:#6c7bff">
+              <div class="ico">D</div><div class="name">Discord</div><div class="val">35%</div>
+              <div class="meter"><div class="seg g"></div><div class="seg g"></div><div class="seg g"></div><div class="seg g"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div></div>
+              <div class="pill m">mute</div><div class="pill s">solo</div>
+            </div>
+            <div class="ch empty" data-i="3">
+              <div class="ico">+</div><div class="name">Assign</div><div class="val">0%</div>
+              <div class="meter"><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div></div>
+              <div class="pill m">mute</div><div class="pill s">solo</div>
+            </div>
+          </div>
+          <div class="hint">click close · hold 3s mute → solo → normal</div>
+        </div>
+      </div>
+    </div>
+    <div class="deskCap">BANK 2 · over a running game</div>
+  </div>
+
+  <div class="guide">
+    <h2>Design guide</h2>
+    <p>Two glass surfaces, and they do different jobs. The panel is a clear pane that bends the game at its edges. The lens is a droplet that magnifies the selected channel. Everything else is flat paint on top.</p>
+    <dl class="spec">
+      <div><dt>Refraction</dt><dd>SVG <code>feDisplacementMap</code> as <code>backdrop-filter</code>. Its edge map is generated to the element's live size, so it never stretches.</dd></div>
+      <div><dt>Clarity</dt><dd>Blur only <code>2px</code> and tint <code>.24</code>, so the game stays readable through the pane and the bending shows.</dd></div>
+      <div><dt>Thickness</dt><dd>A bright inset lip at the top-left, a softer one at the bottom-right, and a faint inner glow.</dd></div>
+      <div><dt>Selection</dt><dd>A glass droplet above the cards. It stretches <code>1.2×</code> mid-slide and settles with a spring.</dd></div>
+      <div><dt>States</dt><dd>The lens tint follows the card: amber when selected, red when muted, blue when soloed. Solo adds the gold glint.</dd></div>
+      <div><dt>Fallback</dt><dd>If a browser can't do SVG backdrop filters, it gets frosted glass (<code>blur 8px</code>) automatically.</dd></div>
+    </dl>
+    <ul class="perf">
+      <li><b>Two filtered surfaces</b>, the panel and the small lens. The filter re-runs only over their area, and it's cheaper than the old 18–20px blur because the blur is now just <code>2px</code>.</li>
+      <li><b>Edge maps are built once per size</b> on a tiny canvas, not every frame.</li>
+      <li><b>All motion is transform and opacity</b>: the open wobble, the lens slide and stretch, and the solo glint. Nothing changes layout while animating.</li>
+      <li>The app runs in <b>WebView2 (Chromium)</b>, which supports SVG backdrop filters, so this is the look it will ship with.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+(function(){
+  var desk = document.getElementById('desk');
+  var scene = document.getElementById('scene');
+  var hud = document.getElementById('hud');
+  var panel = document.getElementById('panel');
+  var row = document.getElementById('row');
+  var lens = document.getElementById('lens');
+  var PAD = 6;
+  var current = 0;
+  var lensX = 0, lensY = 0;
+
+  /* ---------- a detailed "game" behind the HUD, so the bending is visible ---------- */
+  function drawScene(){
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = desk.clientWidth, h = desk.clientHeight;
+    scene.width = w * dpr; scene.height = h * dpr;
+    var g = scene.getContext('2d');
+    g.setTransform(dpr,0,0,dpr,0,0);
+    var sky = g.createLinearGradient(0,0,0,h*.62);
+    sky.addColorStop(0,'#1b1740'); sky.addColorStop(.55,'#5a2f6e'); sky.addColorStop(1,'#e0784a');
+    g.fillStyle = sky; g.fillRect(0,0,w,h*.62);
+    var seed = 7; function rnd(){ seed = (seed*9301+49297)%233280; return seed/233280; }
+    g.fillStyle = 'rgba(255,255,255,.7)';
+    for (var i=0;i<90;i++){ g.fillRect(rnd()*w, rnd()*h*.42, rnd()<.15?2:1, rnd()<.15?2:1); }
+    g.fillStyle = '#ffcf7a'; g.beginPath(); g.arc(w*.72,h*.5,Math.min(w,h)*.09,0,Math.PI*2); g.fill();
+    g.fillStyle = 'rgba(255,207,122,.25)';
+    for (var s=0;s<6;s++){ g.fillRect(w*.6, h*.47 + s*9, w*.24, 3); }
+    function ridge(base, amp, color){
+      g.fillStyle = color; g.beginPath(); g.moveTo(0,h);
+      for (var x=0;x<=w;x+=w/14){ g.lineTo(x, h*base - rnd()*amp); }
+      g.lineTo(w,h); g.fill();
+    }
+    ridge(.58, h*.14, '#3a2352'); ridge(.62, h*.08, '#241634');
+    var fy = h*.62;
+    g.fillStyle = '#0f0b1e'; g.fillRect(0,fy,w,h-fy);
+    g.strokeStyle = 'rgba(255,120,200,.55)'; g.lineWidth = 1;
+    for (var k=0;k<14;k++){ var t = k/13, y = fy + Math.pow(t,1.8)*(h-fy); g.beginPath(); g.moveTo(0,y); g.lineTo(w,y); g.stroke(); }
+    for (var v=-12;v<=12;v++){ g.beginPath(); g.moveTo(w/2 + v*14, fy); g.lineTo(w/2 + v*w*.12, h); g.stroke(); }
+    g.font = '600 12px "Geist Mono",monospace'; g.fillStyle = 'rgba(255,255,255,.85)';
+    g.fillText('HP 86', 18, h-44); g.fillText('30 / 120', w-86, h-44);
+    g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = 1.5;
+    g.strokeRect(w-88, 18, 70, 70);
+    g.beginPath(); g.arc(w/2, h*.8, 7, 0, Math.PI*2); g.stroke();
+  }
+
+  /* ---------- displacement maps (R = x shift, G = y shift, 128 = none) ---------- */
+  function edgeMap(w, h, r, band, inward){
+    var c = document.createElement('canvas'); c.width = w; c.height = h;
+    var ctx = c.getContext('2d'); var img = ctx.createImageData(w, h); var d = img.data;
+    var cx = w/2, cy = h/2, hw = w/2 - r, hh = h/2 - r;
+    for (var y=0;y<h;y++){
+      for (var x=0;x<w;x++){
+        var dx = x + .5 - cx, dy = y + .5 - cy;
+        var px = Math.abs(dx) - hw, py = Math.abs(dy) - hh;
+        var nx, ny, dist;
+        if (px > 0 && py > 0){ var L = Math.hypot(px,py); dist = r - L; nx = px/L*Math.sign(dx); ny = py/L*Math.sign(dy); }
+        else if (px > py){ dist = r - px; nx = Math.sign(dx); ny = 0; }
+        else { dist = r - py; nx = 0; ny = Math.sign(dy); }
+        var s = 0;
+        if (dist < band){ var t = 1 - Math.max(dist,0)/band; s = t*t; }
+        if (inward) s = -s;
+        var i = (y*w + x)*4;
+        d[i] = 128 + nx*s*127; d[i+1] = 128 + ny*s*127; d[i+2] = 128; d[i+3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return c.toDataURL();
+  }
+  function setMap(id, el, radius, band, inward){
+    var w = Math.max(2, Math.round(el.offsetWidth)), h = Math.max(2, Math.round(el.offsetHeight));
+    if (el._mapKey === w+'x'+h) return;
+    el._mapKey = w+'x'+h;
+    var fe = document.getElementById(id);
+    fe.setAttribute('width', w); fe.setAttribute('height', h);
+    fe.setAttribute('href', edgeMap(w, h, Math.min(radius, w/2, h/2), band, inward));
+  }
+
+  /* ---------- lens placement + liquid slide ---------- */
+  function lensGeom(){
+    var el = row.querySelector('.ch[data-i="' + current + '"]');
+    return { el: el, w: el.offsetWidth + PAD*2, h: el.offsetHeight + PAD*2, x: el.offsetLeft - PAD, y: el.offsetTop - PAD };
+  }
+  function markStates(el){
+    lens.classList.toggle('onSolo', el.classList.contains('solo'));
+    lens.classList.toggle('onMute', el.classList.contains('muted'));
+    row.querySelectorAll('.ch').forEach(function(c){ c.classList.toggle('sel', c === el); });
+  }
+  function placeLens(animate){
+    var g = lensGeom();
+    lens.style.width = g.w + 'px'; lens.style.height = g.h + 'px';
+    setMap('lgLensMap', lens, 24, 30, true);
+    var from = 'translate(' + lensX + 'px,' + lensY + 'px)';
+    var to = 'translate(' + g.x + 'px,' + g.y + 'px)';
+    lens.style.transform = to;
+    if (animate && lens.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches){
+      var mid = 'translate(' + ((lensX + g.x)/2) + 'px,' + g.y + 'px) scale(1.2,.93)';
+      lens.animate([{transform:from},{transform:mid,offset:.45},{transform:to + ' scale(.97,1.02)',offset:.78},{transform:to}],
+        {duration:440, easing:'cubic-bezier(.3,1,.45,1)'});
+    }
+    lensX = g.x; lensY = g.y;
+    markStates(g.el);
+  }
+
+  row.addEventListener('click', function(e){
+    var el = e.target.closest('.ch');
+    if (!el || el.classList.contains('empty')) return;
+    current = +el.dataset.i;
+    placeLens(true);
+  });
+
+  /* ---------- open / close with a liquid wobble ---------- */
+  document.getElementById('toggleBtn').addEventListener('click', function(){
+    var collapsing = !hud.classList.contains('collapsed');
+    this.textContent = collapsing ? 'Expand' : 'Collapse';
+    var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (collapsing){
+      if (panel.animate && !reduce) panel.animate([{transform:'scale(1)',opacity:1},{transform:'scale(.2,.06)',opacity:0}],{duration:260,easing:'cubic-bezier(.5,0,.75,0)'});
+      hud.classList.add('collapsed');
+    } else {
+      hud.classList.remove('collapsed');
+      if (panel.animate && !reduce) panel.animate([
+        {transform:'scale(.2,.06)',opacity:0},
+        {transform:'scale(1.05,.97)',opacity:1,offset:.55},
+        {transform:'scale(.985,1.015)',offset:.8},
+        {transform:'scale(1)'}
+      ],{duration:620,easing:'cubic-bezier(.25,.9,.35,1)'});
+    }
+  });
+
+  document.getElementById('refractBtn').addEventListener('click', function(){
+    var on = !hud.classList.contains('refract');
+    hud.classList.toggle('refract', on);
+    this.setAttribute('aria-pressed', on ? 'true' : 'false');
+    this.textContent = on ? 'Refraction on' : 'Refraction off';
+  });
+
+  /* ---------- pointer-following highlight ---------- */
+  panel.addEventListener('pointermove', function(e){
+    var r = panel.getBoundingClientRect();
+    panel.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+    panel.style.setProperty('--my', (e.clientY - r.top) + 'px');
+  });
+
+  function fitHud(){
+    // never let the panel spill past the stage on narrow viewers — scale it
+    // down from its top center instead, so it stays visually centered
+    hud.style.transform = '';
+    var room = desk.clientWidth - 24, need = panel.offsetWidth;
+    var s = need > room ? room / need : 1;
+    hud.style.transformOrigin = '50% 0';
+    hud.style.transform = s < 1 ? 'scale(' + s.toFixed(3) + ')' : '';
+  }
+  function layout(){
+    fitHud();
+    drawScene();
+    setMap('lgPanelMap', panel, 32, 26, false);
+    placeLens(false);
+  }
+  if (window.ResizeObserver){ new ResizeObserver(function(){ layout(); }).observe(desk); }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(layout);
+  layout();
+})();
+</script>

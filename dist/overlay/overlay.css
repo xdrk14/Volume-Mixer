@@ -1,197 +1,25 @@
-:root{
-  --bg:#0b0c10; --panel:#15171d; --panel2:#1b1e26; --line:#262931;
-  --text:#eef1f4; --dim:#6d717c; --dim2:#3d4049;
-  --accent:#ffb454; --accentDim: rgba(255,180,84,.18);
-  --lowc:#35d399; --midc:#ffcf5c; --hotc:#ff5f5f;
-  --soloc:#4da6ff; --soloDim: rgba(77,166,255,.18);
-  --gold:#ffd35a;
-}
-*{box-sizing:border-box;outline:none;-webkit-tap-highlight-color:transparent;}
-html,body{margin:0;height:100%;background:transparent;}
-body{
-  font-family:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
-  color:var(--text); overflow:hidden; background:transparent;
-  -webkit-user-select:none; user-select:none;
-  -webkit-font-smoothing:antialiased;
-}
-/* every interactive element here is custom-drawn (selFrame is the only
-   "focus" indicator this HUD needs) — the browser's own default blue
-   focus-visible ring on a clicked div/input otherwise shows up as a
-   second, unrelated highlight box floating around whatever was last
-   clicked. */
-:focus, :focus-visible{outline:none !important;}
+html,body{margin:0;height:100%;background:transparent;overflow:hidden;}
+*{box-sizing:border-box;outline:none;}
+body{font-family:'Geist',ui-sans-serif,system-ui,sans-serif;-webkit-user-select:none;user-select:none;}
 
-#overlay{position:fixed;top:16px;left:50%;transform:translateX(-50%);}
+/* the window is sized a bit larger than the panel (room for the menu); the
+   panel sits top-center inside it */
+#stage{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:1;}
 
-/* Dynamic-Island style: one capsule that morphs itself (width/height/
-   radius) between "nothing" at rest and the full panel — no separate pill
-   with text sitting there while collapsed. Content fades in a beat after
-   the shape settles (transition-delay below) so it reads as poured into
-   the shape rather than just cross-fading on top of it. */
-#panel{
-  width:0;height:0;padding:14px 18px 12px;
-  background:linear-gradient(180deg,rgba(8,8,10,.98),rgba(0,0,0,.98));
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  border:1px solid transparent;
-  border-radius:999px;position:relative;overflow:hidden;
-  box-shadow:none;opacity:0;
-  transition:
-    width .4s cubic-bezier(.32,1.65,.46,1),
-    height .4s cubic-bezier(.32,1.65,.46,1),
-    border-radius .4s cubic-bezier(.32,1.65,.46,1),
-    opacity .18s ease,
-    border-color .28s ease,
-    box-shadow .28s ease;
-}
-#overlay.expanded #panel{
-  width:360px;height:300px;border-radius:14px;
-  border-color:var(--line);opacity:1;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
-}
 
-#inner{width:100%;display:flex;flex-direction:column;align-items:center;
-  opacity:0;transform:translateY(4px) scale(.92);transform-origin:top center;
-  transition:opacity .16s ease .03s,transform .28s cubic-bezier(.34,1.6,.64,1) .03s;
-}
-#overlay.expanded #inner{opacity:1;transform:translateY(0) scale(1);}
 
-#panel .sweep{
-  position:absolute;top:0;left:-40%;width:40%;height:100%;
-  background:linear-gradient(90deg,transparent,rgba(255,180,84,.14),transparent);
-  pointer-events:none;
-}
-#panel.poweron .sweep{animation:sweep .32s ease-out;}
-@keyframes sweep{ from{left:-40%;} to{left:110%;} }
-
-#ticks{display:flex;gap:5px;justify-content:center;margin-bottom:14px;}
-.tick{width:34px;height:3px;background:var(--dim2);border-radius:2px;transition:background .1s,box-shadow .1s;}
-.tick.active{background:var(--accent);box-shadow:0 0 6px rgba(255,180,84,.65);}
-.tick.pulse{animation:tickpulse .22s ease-out;}
-@keyframes tickpulse{ 0%{box-shadow:0 0 0 0 rgba(255,180,84,.7);} 100%{box-shadow:0 0 0 6px rgba(255,180,84,0);} }
-
-#channelRow{display:flex;gap:14px;position:relative;padding-top:2px;}
-/* size/position are set from JS (measured off the actual selected .chan
-   element's own box, with a uniform pad on all 4 sides) rather than
-   hardcoded here — guarantees a symmetric ring regardless of any drift
-   between this file's numbers and the real rendered layout. */
-#selFrame{
-  position:absolute;border:1.5px solid var(--accent);
-  border-radius:8px;background:var(--accentDim);pointer-events:none;
-  box-shadow:0 0 10px rgba(255,180,84,.3),inset 0 0 12px rgba(255,180,84,.08);
-  transition:border-color .12s,background .12s,box-shadow .12s,width .15s ease,height .15s ease,top .15s ease;
-  will-change:transform;
-}
-#selFrame.muted{border-color:var(--hotc);background:rgba(255,95,95,.1);
-  box-shadow:0 0 10px rgba(255,95,95,.32),inset 0 0 12px rgba(255,95,95,.08);}
-/* a soloed channel is never itself muted, so this and .muted above are
-   mutually exclusive — the JS side only ever applies one */
-#selFrame.solo{border-color:var(--soloc);background:rgba(77,166,255,.12);
-  box-shadow:0 0 10px rgba(77,166,255,.35),inset 0 0 12px rgba(77,166,255,.08);}
-
-.chan{width:70px;display:flex;flex-direction:column;align-items:center;position:relative;z-index:2;
-  padding:5px 3px;border-radius:6px;transition:background .12s,box-shadow .15s,opacity .15s,filter .15s;}
-/* muted (whether by hand or forced by someone else's solo — the payload
-   doesn't distinguish, and visually it shouldn't need to) reads clearly
-   dimmed, not just a red badge easy to miss at a glance */
-.chan.muted{opacity:.5;filter:saturate(.75);}
-/* persistent blue ring on the card itself (not just selFrame) so a
-   soloed channel stays visibly marked even after you navigate away from
-   it, plus a warm gold ambient pulse + a diagonal shimmer sweeping across
-   the whole card (icon, name, meter, buttons) — a "this one's special"
-   treatment on top of the blue, Minecraft-enchant-glint style. */
-.chan.solo{
-  opacity:1;filter:none;
-  box-shadow:0 0 0 1.5px var(--soloc),0 0 8px rgba(77,166,255,.35),0 0 10px 1px rgba(255,211,90,.25);
-  animation:soloGlow 2.4s ease-in-out infinite;
-}
-.chan.solo::before{
-  content:'';position:absolute;inset:0;border-radius:6px;pointer-events:none;z-index:1;
-  background:linear-gradient(115deg,
-    transparent 0%, transparent 42%,
-    rgba(255,211,90,0) 46%,
-    rgba(255,241,190,.9) 50%,
-    rgba(255,211,90,0) 54%,
-    transparent 58%, transparent 100%);
-  background-size:240% 100%;
-  mix-blend-mode:screen;
-  animation:enchantGlint 2.6s linear infinite;
-}
-@keyframes soloGlow{
-  0%,100%{box-shadow:0 0 0 1.5px var(--soloc),0 0 8px rgba(77,166,255,.35),0 0 10px 1px rgba(255,211,90,.25);}
-  50%{box-shadow:0 0 0 1.5px var(--soloc),0 0 10px rgba(77,166,255,.45),0 0 18px 3px rgba(255,211,90,.5);}
-}
-@keyframes enchantGlint{
-  0%{background-position:140% 0;}
-  100%{background-position:-140% 0;}
-}
-.assignArea{cursor:pointer;display:flex;flex-direction:column;align-items:center;padding:2px 4px;border-radius:4px;transition:background .1s;}
-.assignArea:hover{background:rgba(255,255,255,.06);}
-.assignArea:hover .name{color:var(--text);}
-.chan .logo{font-size:19px;line-height:1;margin-bottom:4px;filter:grayscale(.15);transition:text-shadow .12s;}
-.chan.empty .logo{opacity:.2;}
-.chan .name{font-size:9px;color:var(--dim);height:11px;margin-bottom:6px;letter-spacing:.02em;
-  max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  transition:color .12s,text-shadow .12s;}
-.chan.empty .name{color:var(--dim2);}
-.chan.selected .name{color:var(--accent);text-shadow:0 0 6px rgba(255,180,84,.6);}
-.chan.selected.muted .name{color:var(--hotc);text-shadow:0 0 6px rgba(255,95,95,.6);}
-.chan.solo .name{color:var(--soloc);text-shadow:0 0 6px rgba(77,166,255,.6);}
-
-#appDropdown{position:fixed;background:rgba(3,3,4,.98);backdrop-filter:blur(10px);
-  border:1px solid var(--line);
-  border-radius:6px;padding:4px;z-index:200;
-  font-size:11px;max-height:220px;overflow-y:auto;width:170px;
-  animation:ddIn .09s ease-out;}
-@keyframes ddIn{ from{opacity:0;transform:translateY(-4px);} to{opacity:1;transform:translateY(0);} }
-#appDropdown .ddRow{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:4px;
-  cursor:pointer;color:var(--dim);letter-spacing:.02em;transition:background .08s,color .08s;}
-#appDropdown .ddRow:hover{background:var(--accentDim);color:var(--text);}
-#appDropdown .ddRow.ddActive{color:var(--accent);}
-#appDropdown .ddIcon{font-size:14px;width:16px;text-align:center;}
-#appDropdown .ddDivider{height:1px;background:var(--line);margin:3px 2px;}
-#appDropdown .ddEmpty{padding:8px 9px;color:var(--dim2);font-size:10px;}
-
-.gearBtn{position:absolute;top:-8px;right:-4px;font-size:12px;color:var(--dim);
-  opacity:0;transition:opacity .1s,color .1s;cursor:pointer;z-index:6;padding:2px;}
-.chan:hover .gearBtn{opacity:.85;}
-.gearBtn:hover{color:var(--accent);opacity:1;}
-
-#settingsPanel{position:fixed;background:rgba(3,3,4,.98);backdrop-filter:blur(10px);
-  border:1px solid var(--line);
-  border-radius:6px;padding:9px 11px;z-index:210;
-  font-size:10px;width:156px;animation:ddIn .09s ease-out;}
-#settingsPanel .spHead{display:flex;justify-content:space-between;align-items:center;
-  color:var(--dim);letter-spacing:.05em;margin-bottom:9px;font-size:9px;}
-#settingsPanel .spClose{cursor:pointer;color:var(--dim);padding:0 4px;font-size:13px;line-height:1;}
-#settingsPanel .spClose:hover{color:var(--hotc);}
-#settingsPanel .spRow{display:flex;justify-content:space-between;align-items:center;
-  margin-bottom:7px;color:var(--dim);letter-spacing:.02em;}
-#settingsPanel .spRow:last-child{margin-bottom:0;}
-#settingsPanel input[type=color]{width:28px;height:18px;border:1px solid var(--line);
-  border-radius:3px;background:none;padding:0;cursor:pointer;}
-
-.meter{width:16px;height:96px;display:flex;flex-direction:column-reverse;gap:2px;
-  background:#020203;border:1px solid var(--line);border-radius:2px;padding:2px;margin-bottom:8px;position:relative;}
-.seg{width:100%;flex:1;border-radius:1px;background:#20222a;transition:background .05s linear,box-shadow .05s linear;}
-.seg.lit{box-shadow:0 0 4px currentColor;}
-.peakLine{position:absolute;left:2px;right:2px;height:1px;background:var(--text);opacity:.75;
-  box-shadow:0 0 4px rgba(255,255,255,.5);}
-
-.muteBtn,.soloBtn{font-size:9px;width:46px;text-align:center;border:1px solid var(--line);border-radius:2px;
-  padding:2px 0;color:var(--dim);letter-spacing:.05em;
-  transition:opacity .12s,color .1s,border-color .1s,text-shadow .1s;}
-.soloBtn{margin-top:5px;}
-.chan.empty .muteBtn,.chan.empty .soloBtn{opacity:0;pointer-events:none;}
-.chan.muted .muteBtn{color:var(--hotc);border-color:var(--hotc);text-shadow:0 0 6px rgba(255,95,95,.55);}
-.chan.solo .soloBtn{color:var(--soloc);border-color:var(--soloc);text-shadow:0 0 6px rgba(77,166,255,.55);}
-.flash .meter{animation:flash .16s ease-out;}
-@keyframes flash{ 0%{filter:brightness(2.6);} 100%{filter:brightness(1);} }
-
-#hint{margin-top:10px;font-size:9px;color:var(--dim2);text-align:center;letter-spacing:.03em;}
-
-#disconnected{position:fixed;top:16px;left:50%;transform:translateX(-50%);
-  background:rgba(2,2,3,.95);border:1px solid var(--hotc);border-radius:3px;
-  padding:5px 14px;font-size:11px;letter-spacing:.06em;color:var(--hotc);
-  text-shadow:0 0 8px rgba(255,95,95,.5);display:none;}
-body.disconnected #disconnected{display:block;}
-body.disconnected #overlay{display:none;}
+/* app-assignment menu (mouse only) — same glass language as the panel */
+.menu{position:fixed;z-index:50;width:188px;max-height:230px;overflow-y:auto;padding:5px;border-radius:14px;
+  color:#f3f4f7;font-size:12px;
+  background:linear-gradient(180deg,rgb(255 255 255 / .08),rgb(255 255 255 / .02)),rgb(12 13 18 / .92);
+  box-shadow:inset 1.5px 1.5px 1px -.5px rgb(255 255 255 / .45),inset 0 0 0 1px rgb(255 255 255 / .08);
+  animation:menuIn .14s cubic-bezier(.2,.8,.3,1);}
+@keyframes menuIn{from{opacity:0;transform:translateY(-4px) scale(.98);}to{opacity:1;transform:none;}}
+.menu .row{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:9px;cursor:pointer;color:rgb(255 255 255 / .75);}
+.menu .row:hover{background:rgb(255 255 255 / .08);color:#fff;}
+.menu .row.on{color:#fff;background:rgb(255 255 255 / .06);}
+.menu .dot{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;font-size:11px;font-weight:700;flex-shrink:0;
+  background:rgb(var(--tc,255 255 255) / .3);color:var(--fg,#fff);box-shadow:inset 0 0 0 1px rgb(var(--tc,255 255 255) / .5);}
+.menu .sep{height:1px;margin:4px 6px;background:rgb(255 255 255 / .08);}
+.menu .empty{padding:8px 9px;color:rgb(255 255 255 / .4);font-size:11px;}
+.menu::-webkit-scrollbar{width:6px;} .menu::-webkit-scrollbar-thumb{background:rgb(255 255 255 / .15);border-radius:3px;}

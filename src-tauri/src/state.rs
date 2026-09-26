@@ -6,6 +6,19 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter};
 
 pub const STATE_EVENT: &str = "overlay-state";
+pub const APPEARANCE_EVENT: &str = "appearance-changed";
+
+/// Progress of an in-flight hold on the joystick button, so the overlay can
+/// show how long until the next mute/solo/normal step.
+#[derive(Clone, Debug, Serialize)]
+pub struct HoldInfo {
+    /// 0.0..1.0 through the current step
+    pub progress: f32,
+    /// the stage the next step will apply: "normal" | "mute" | "solo"
+    pub next: &'static str,
+    /// the stage this hold has applied so far, if any
+    pub current: Option<&'static str>,
+}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ChannelPayload {
@@ -27,6 +40,7 @@ pub struct OverlayPayload {
     pub bank: usize,
     pub channel: usize,
     pub banks: Vec<Vec<ChannelPayload>>,
+    pub hold: Option<HoldInfo>,
 }
 
 #[derive(Debug)]
@@ -48,6 +62,8 @@ pub struct RuntimeState {
     /// solo is active. This is the config's persisted baseline — solo
     /// itself is a momentary audition tool and is never persisted.
     pub pre_solo_muted: Option<[[bool; CHANNEL_COUNT]; BANK_COUNT]>,
+    /// Set every tick by the serial thread while the button is being held.
+    pub hold: Option<HoldInfo>,
     /// Last known live volume per slot (0-100). Only the active bank's
     /// values are driven by real knob ticks; the rest hold their last value.
     pub volumes: [[u8; CHANNEL_COUNT]; BANK_COUNT],
@@ -66,6 +82,7 @@ impl RuntimeState {
             muted: cfg.muted,
             solo: None,
             pre_solo_muted: None,
+            hold: None,
             volumes: Default::default(),
         }
     }
@@ -147,6 +164,7 @@ impl AppState {
             bank: runtime.bank,
             channel: runtime.channel,
             banks,
+            hold: runtime.hold.clone(),
         }
     }
 
