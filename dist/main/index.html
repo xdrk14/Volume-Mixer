@@ -123,6 +123,11 @@
             <button type="button" role="radio" data-v="true">On</button><button type="button" role="radio" data-v="false">Off</button>
           </div>
           <p class="secNote tight">Lets the lensing and blur see the game behind the overlay. Only runs while it's open. Not for exclusive-fullscreen games.</p>
+          <div class="subLbl">Screen share, OBS and screenshots</div>
+          <div class="seg" data-k="showInShare" data-type="bool" role="radiogroup" aria-label="Visible in screen share" style="grid-template-columns:repeat(2,1fr)">
+            <button type="button" role="radio" data-v="false">Hidden</button><button type="button" role="radio" data-v="true">Visible</button>
+          </div>
+          <p class="secNote tight" id="shareNote"></p>
           <details class="more">
             <summary>Performance</summary>
             <div class="subLbl">Frame rate</div>

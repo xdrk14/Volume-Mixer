@@ -15,13 +15,15 @@ use tauri::AppHandle;
 
 pub const FRAME_EVENT: &str = "backdrop-frame";
 
-fn settings(state: &AppState) -> (bool, u64, i32) {
+/// (live glass on, fps, downscale, overlay visible to screen share)
+fn settings(state: &AppState) -> (bool, u64, i32, bool) {
     let a = state.config.get().appearance;
     let enabled = a.get("liveGlass").and_then(|v| v.as_bool()).unwrap_or(true);
+    let in_share = a.get("showInShare").and_then(|v| v.as_bool()).unwrap_or(false);
     let fps = a.get("captureFps").and_then(|v| v.as_u64()).unwrap_or(30).clamp(10, 60);
     // downscale divisor per side: 2 sharp, 3 balanced, 4 fastest
     let scale = a.get("captureScale").and_then(|v| v.as_u64()).unwrap_or(3).clamp(2, 4) as i32;
-    (enabled, fps, scale)
+    (enabled, fps, scale, in_share)
 }
 
 #[cfg(windows)]
@@ -46,7 +48,7 @@ mod win {
         SelectObject, SetStretchBltMode, StretchBlt, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
         COLORONCOLOR, DIB_RGB_COLORS, HBITMAP, HDC, HGDIOBJ, SRCCOPY,
     };
-    use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE};
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE};
 
     pub fn run(app: AppHandle, state: Arc<AppState>) {
         // the overlay window may not exist the instant setup() runs
@@ -61,19 +63,26 @@ mod win {
             std::thread::sleep(Duration::from_millis(100));
         }
         let Some(hwnd) = hwnd else { return };
-        // without this the capture would include the overlay itself, and the
-        // glass would end up refracting its own previous frame
-        unsafe {
-            let _ = SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
-        }
+        // Hiding the overlay from capture is what lets live glass see the game
+        // under it; without it the glass would refract its own previous frame.
+        // The catch: it also hides the overlay from screen share, OBS and
+        // screenshots. "Show in screen share" flips that, and live glass
+        // pauses while it's on.
+        let mut hidden_from_capture: Option<bool> = None;
 
         let mut grabber = Grabber::default();
         let mut last_hash = 0u64;
         let mut last_sent = Instant::now();
         loop {
-            let (enabled, fps, scale) = settings(&state);
+            let (enabled, fps, scale, in_share) = settings(&state);
+            if hidden_from_capture != Some(!in_share) {
+                unsafe {
+                    let _ = SetWindowDisplayAffinity(hwnd, if in_share { WDA_NONE } else { WDA_EXCLUDEFROMCAPTURE });
+                }
+                hidden_from_capture = Some(!in_share);
+            }
             let expanded = state.runtime.lock().map(|r| r.expanded).unwrap_or(false);
-            if !enabled || !expanded {
+            if !enabled || in_share || !expanded {
                 grabber.release();
                 last_hash = 0;
                 std::thread::sleep(Duration::from_millis(120));

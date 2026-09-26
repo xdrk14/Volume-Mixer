@@ -27,7 +27,10 @@
     0 0 0 1px rgb(0 0 0 / calc(var(--shade) * .55)),
     0 0 50px 12px rgb(0 0 0 / calc(var(--shade) * .6)),
     var(--drop);
-  transform-origin:50% 0;}
+  transform-origin:50% 0;
+  /* keep one drawing of the panel and let the GPU scale it: without this the
+     Morph/Pop open animations redraw every shadow at every size, every frame */
+  will-change:transform;}
 .hud .panel > .inner::before{content:'';position:absolute;inset:-16px -18px -12px;border-radius:var(--r);pointer-events:none;z-index:-1;
   background:rgb(0 0 0 / calc(var(--shade) * .72));}
 .hud.no-backdrop .panel{backdrop-filter:none;-webkit-backdrop-filter:none;}
@@ -48,8 +51,12 @@
 .hud.collapsed .inner{opacity:0;}
 
 .hud .ticks{display:flex;gap:5px;margin-bottom:14px;}
-.hud .tick{width:22px;height:3px;border-radius:99px;background:rgba(255,255,255,.22);transition:background .2s,box-shadow .2s;}
-.hud .tick.on{background:rgb(var(--acc-rgb));box-shadow:0 0 8px rgb(var(--acc-rgb) / .6);}
+.hud .tick{position:relative;width:22px;height:3px;border-radius:99px;background:rgba(255,255,255,.22);will-change:transform;}
+/* the lit look fades in as a separate layer (opacity only), so switching bank
+   never repaints the rest of the panel */
+.hud .tick::after{content:'';position:absolute;inset:0;border-radius:inherit;background:rgb(var(--acc-rgb));box-shadow:0 0 8px rgb(var(--acc-rgb) / .6);
+  opacity:0;transition:opacity .2s;will-change:opacity;}
+.hud .tick.on::after{opacity:1;}
 
 .hud .row{position:relative;display:flex;gap:8px;padding-bottom:8px;}
 
@@ -72,7 +79,7 @@
 
 /* ---- channel cards ---- */
 .hud .ch{position:relative;z-index:1;width:74px;padding:10px 0 9px;border-radius:calc(var(--r) * .68);
-  display:flex;flex-direction:column;align-items:center;contain:layout style;}
+  display:flex;flex-direction:column;align-items:center;contain:layout style;will-change:transform,opacity;}
 .hud .pickable{cursor:pointer;border-radius:12px;display:flex;flex-direction:column;align-items:center;padding:0 4px;}
 .hud.can-pick .pickable:hover .name{color:#fff;}
 .hud .ico{width:44px;height:44px;border-radius:calc(var(--r) * .42);display:grid;place-items:center;margin-bottom:7px;
@@ -82,7 +89,7 @@
   transition:opacity .2s,filter .2s;}
 .hud .ch.empty .ico{background:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.2);color:rgba(255,255,255,.45);font-weight:400;text-shadow:none;}
 .hud .name{font-size:11px;font-weight:500;color:rgba(255,255,255,.86);line-height:1.2;text-shadow:0 1px 2px rgba(0,0,0,.4);
-  max-width:70px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .2s,opacity .2s;}
+  max-width:70px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .2s;}
 .hud .ch.sel .name{color:color-mix(in srgb,rgb(var(--hl-rgb,var(--acc-rgb))) 70%,white);}
 .hud .ch.solo .name{color:#64b5ff;}
 .hud .ch.empty .name{color:rgba(255,255,255,.42);}
@@ -129,12 +136,12 @@
 
 .hud .hint{margin-top:5px;height:14px;display:flex;align-items:center;gap:7px;font-family:var(--hud-mono);font-size:9px;color:rgba(255,255,255,.5);}
 .hud .hint .bar{width:46px;height:3px;border-radius:2px;background:rgba(255,255,255,.14);overflow:hidden;display:none;}
-.hud .hint .bar i{display:block;height:100%;width:100%;background:rgb(var(--acc-rgb));transform-origin:0 50%;transform:scaleX(0);transition:transform .06s linear;}
+.hud .hint .bar i{display:block;height:100%;width:100%;background:rgb(var(--acc-rgb));transform-origin:0 50%;transform:scaleX(0);will-change:transform;}
 .hud .hint.holding .bar{display:block;}
 .hud .hint.holding{color:#fff;}
 
 /* text halo: a dark outline-glow behind the HUD's text for bright backdrops */
-.hud .name,.hud .val,.hud .hint,.hud .pill,.hud .ico{
+.hud .name,.hud .val,.hud .hint,.hud .pill{
   text-shadow:0 0 1px rgb(0 0 0 / var(--halo)),0 0 3px rgb(0 0 0 / calc(var(--halo) * .95)),0 1px 6px rgb(0 0 0 / calc(var(--halo) * .85)),0 0 14px rgb(0 0 0 / calc(var(--halo) * .6));}
 .hud .ch.muted .pill.m{text-shadow:0 1px 1px rgb(60 0 0 / .6),0 0 6px rgb(0 0 0 / calc(var(--halo) * .5));}
 

@@ -65,7 +65,8 @@
   // it only in a thin band along the panel's edge (on the GPU). The middle is
   // left alone: there it's the real game, live, seen through the window.
   let liveOn = false, lastFrameAt = 0, expanded = false, decoding = false, lastBitmap = null;
-  function liveEnabled(){ return MixerHud.normalize(appearance).liveGlass; }
+  // live glass pauses while the overlay is visible to screen share (it would capture itself)
+  function liveEnabled(){ const a = MixerHud.normalize(appearance); return a.liveGlass && !a.showInShare; }
   function setLive(on){
     if (on === liveOn) return;
     liveOn = on;

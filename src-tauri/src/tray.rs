@@ -4,7 +4,10 @@ use tauri::{AppHandle, Manager};
 
 fn open_settings(app: &AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
+        // show() alone leaves a minimized window minimized, so the menu
+        // item looked like it did nothing
         let _ = win.show();
+        let _ = win.unminimize();
         let _ = win.set_focus();
     }
 }

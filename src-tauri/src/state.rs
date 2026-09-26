@@ -100,6 +100,8 @@ pub struct AppState {
     /// drift) mid-drag yanks the bank/channel out from under an open panel
     /// and closes it on you.
     pub ui_busy: AtomicBool,
+    /// JSON of the last state sent to the windows, to skip identical re-sends.
+    last_emitted: Mutex<String>,
 }
 
 impl AppState {
@@ -123,6 +125,7 @@ impl AppState {
             runtime: Mutex::new(runtime),
             connected: AtomicBool::new(false),
             ui_busy: AtomicBool::new(false),
+            last_emitted: Mutex::new(String::new()),
         }
     }
 
@@ -168,8 +171,21 @@ impl AppState {
         }
     }
 
+    /// Sends the state to both windows, but only when it differs from the
+    /// last one sent. The serial thread calls this on every 20 Hz controller
+    /// frame; most of those change nothing, and skipping them saves both
+    /// windows a JSON parse and a render pass each time. A window that loads
+    /// later asks for the current state with `get_state`, so nothing is lost.
     pub fn emit(&self, app: &AppHandle) {
         let payload = self.build_payload();
+        let Ok(json) = serde_json::to_string(&payload) else { return };
+        {
+            let mut last = self.last_emitted.lock().unwrap();
+            if *last == json {
+                return;
+            }
+            *last = json;
+        }
         let _ = app.emit(STATE_EVENT, payload);
     }
 }

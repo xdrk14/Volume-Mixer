@@ -25,7 +25,7 @@
     glint:80, speed:2.8,
     motion:'springy', mspeed:1, bounce:60, stretch:18, openAnim:'morph', bankAnim:'slide', meterMs:40, ignoreSysMotion:false,
     font:'Geist', appColors:{},
-    shade:40, halo:55, tintDark:0, bg:'#000000', bgA:0, bgBlur:0, liveGlass:true, captureFps:30, captureScale:3};
+    shade:40, halo:55, tintDark:0, bg:'#000000', bgA:0, bgBlur:0, liveGlass:true, captureFps:30, captureScale:3, showInShare:false};
   var MUTE_DEFAULT = '#b10203';
 
   /* brand colors keyed by exe stem (the backend's app_id) */
@@ -172,13 +172,14 @@
     var hud = root.querySelector('.hud'), panel = hud.querySelector('.panel'), row = hud.querySelector('.row'),
         lens = hud.querySelector('.lens'), ticks = hud.querySelector('.ticks'), hint = hud.querySelector('.hint'),
         hintTxt = hud.querySelector('.hintTxt'), hintBar = hud.querySelector('.bar i');
-    var rimCanvas = hud.querySelector('.rim'), rim = null, rimSrc = null, rimRect = null, shineAng = -2.2, lastRimDraw = 0, lensHl = null;
+    var rimCanvas = hud.querySelector('.rim'), rim = null, rimSrc = null, rimRect = null, shineAng = -2.2, lensHl = null;
     if (opts.shadow === false) hud.classList.add('no-shadow');
     if (opts.onPick) hud.classList.add('can-pick');
 
     var A = normalize(null), P = null, cards = [], builtSig = '', builtBank = -1, lastSig = '', hintState = '';
     var PAD = 7, lensX = 0, lensY = 0, first = true, lastChannel = -1, lastBank = -1;
     var disp = [[0,0,0,0],[0,0,0,0],[0,0,0,0]];
+    var holdP = -1, holdAt = 0;
 
     function reduced(){ return isSystemReduced() && !A.ignoreSysMotion; }
     function canAnimate(){ return A.motion !== 'off' && !reduced(); }
@@ -207,7 +208,6 @@
       // lensing off but blur on: a zero-width band leaves just the blurred fill
       var band = A.refract > 0 ? (A.rimW || 22) : 0.001;
       rim.draw(rimSrc, map, [w, h], Math.min(A.radius, w/2, h/2), band, A.refract, A.blur, fx, upload);
-      lastRimDraw = performance.now();
     }
     function paintCard(c, ch){
       var el = c.el;
@@ -305,12 +305,12 @@
       var h = P && P.hold;
       if (h && P.expanded){
         hint.classList.add('holding');
-        hintBar.style.transform = 'scaleX('+Math.max(0,Math.min(1,h.progress)).toFixed(3)+')';
+        holdP = h.progress; holdAt = performance.now();   // the frame loop fills the bar between updates
         var t = (h.current ? STAGE_LABEL[h.current].toUpperCase()+' · ' : 'hold · ') + 'next: ' + STAGE_LABEL[h.next];
         if (hintTxt.textContent !== t) hintTxt.textContent = t;
         hintState = 'hold';
       } else if (hintState !== 'idle'){
-        hint.classList.remove('holding'); hintBar.style.transform = 'scaleX(0)';
+        hint.classList.remove('holding'); hintBar.style.transform = 'scaleX(0)'; holdP = -1;
         hintTxt.textContent = opts.hint || 'click close · hold: normal → mute → solo';
         hintState = 'idle';
       }
@@ -343,6 +343,7 @@
       if (first) morph(P.expanded, false);
       else if (expNow !== !!P.expanded) morph(!!P.expanded, true);
       lastChannel = P.channel; lastBank = P.bank; first = false;
+      kick();
     }
 
     function apply(){
@@ -365,10 +366,20 @@
       if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ if (P) placeLens(false); });
     }
 
-    /* meters: lerp toward the knob value; DOM writes only on change */
+    /* per-frame work (meters, hold bar, rim light). Runs at the display's own
+       refresh rate while the panel is open, and stops completely while it's
+       collapsed so a closed overlay costs nothing during a game. */
     var lastT = performance.now(), raf = 0, alive = true;
-    function meterLoop(now){
-      if (!alive) return;
+    function loopWanted(){ return alive && !hud.classList.contains('collapsed'); }
+    function kick(){
+      if (raf || !loopWanted()) return;
+      // meters jump straight to the live values on open instead of replaying old ones
+      if (P) P.banks.forEach(function(bank, b){ bank.forEach(function(ch, i){ disp[b][i] = ch.app_id ? ch.volume : 0; }); });
+      lastT = performance.now(); raf = requestAnimationFrame(frameLoop);
+    }
+    function frameLoop(now){
+      raf = 0;
+      if (!loopWanted()) return;
       var dt = Math.min(48, now - lastT); lastT = now;
       if (P){
         var b = P.bank, bank = P.banks[b], k = Math.min(1, dt / (A.meterMs || 40));
@@ -380,14 +391,19 @@
           var txt = (asg ? ch.volume : 0) + '%'; if (txt !== c.txt){ c.val.textContent = txt; c.txt = txt; }
         });
       }
-      // the rim's moving light: ~30 redraws a second, only while the panel is open with a rim
-      if (rimWanted() && A.refract > 0 && !hud.classList.contains('collapsed') && now - lastRimDraw > 32){
-        if (canAnimate() && A.shineSpin > 0) shineAng += dt / 1000 * (A.shineSpin / 100) * 1.6;
+      // hold bar: the backend reports progress 20x a second and it rises one
+      // full bar per second, so fill it smoothly in between
+      if (holdP >= 0){
+        var p = Math.min(1, holdP + (now - holdAt) / 1000);
+        hintBar.style.transform = 'scaleX(' + p.toFixed(4) + ')';
+      }
+      // moving rim light: redrawn every frame so it glides at the full refresh rate
+      if (rimWanted() && A.refract > 0 && A.shine > 0 && A.shineSpin > 0 && canAnimate()){
+        shineAng += dt / 1000 * (A.shineSpin / 100) * 1.6;
         drawRim(false);
       }
-      raf = requestAnimationFrame(meterLoop);
+      raf = requestAnimationFrame(frameLoop);
     }
-    raf = requestAnimationFrame(meterLoop);
 
     /* rim highlight follows the pointer, at most once per frame */
     var ptr = null;

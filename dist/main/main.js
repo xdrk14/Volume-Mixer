@@ -232,7 +232,10 @@
     document.querySelectorAll('#styles .opt').forEach(o => o.setAttribute('aria-checked', o.dataset.v === A.style));
     document.querySelectorAll('#fonts .fontOpt').forEach(o => o.setAttribute('aria-checked', o.dataset.v === A.font));
     document.querySelectorAll('.seg[data-k]').forEach(g => g.querySelectorAll('button').forEach(o => o.setAttribute('aria-checked', o.dataset.v === String(A[g.dataset.k]))));
-    $('liveName').textContent = A.liveGlass ? A.captureFps + ' fps · ' + ({2: 'sharp', 3: 'balanced', 4: 'fastest'}[A.captureScale] || '') : 'off';
+    $('liveName').textContent = !A.liveGlass ? 'off' : A.showInShare ? 'paused' : A.captureFps + ' fps · ' + ({2: 'sharp', 3: 'balanced', 4: 'fastest'}[A.captureScale] || '');
+    $('shareNote').textContent = A.showInShare
+      ? 'Viewers and recordings see the overlay. Live glass is paused, so the lensing and blur show plain tint.'
+      : 'The overlay is invisible to screen share and recordings. That is what lets Live glass see the game under it.';
     SLIDERS.forEach(k => { if (document.activeElement !== $(k)) $(k).value = A[k]; $(k + 'Out').textContent = FMT[k](A[k]); });
     if (document.activeElement !== $('accentPick')) $('accentPick').value = H.accentHex(A);
     if (document.activeElement !== $('mutePick')) $('mutePick').value = A.mute || H.MUTE_DEFAULT;
