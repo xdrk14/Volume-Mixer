@@ -139,7 +139,7 @@ impl AppState {
 
     pub fn build_payload(&self) -> OverlayPayload {
         let cfg = self.config.get();
-        let runtime = self.runtime.lock().unwrap();
+        let runtime = self.runtime.lock().unwrap_or_else(|e| e.into_inner());
         let mut banks = Vec::with_capacity(BANK_COUNT);
         for b in 0..BANK_COUNT {
             let mut chans = Vec::with_capacity(CHANNEL_COUNT);
@@ -180,7 +180,7 @@ impl AppState {
         let payload = self.build_payload();
         let Ok(json) = serde_json::to_string(&payload) else { return };
         {
-            let mut last = self.last_emitted.lock().unwrap();
+            let mut last = self.last_emitted.lock().unwrap_or_else(|e| e.into_inner());
             if *last == json {
                 return;
             }

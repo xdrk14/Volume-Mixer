@@ -71,11 +71,11 @@ impl ConfigStore {
     }
 
     pub fn get(&self) -> AppConfig {
-        self.inner.lock().unwrap().clone()
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn update<F: FnOnce(&mut AppConfig)>(&self, f: F) {
-        let mut cfg = self.inner.lock().unwrap();
+        let mut cfg = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         f(&mut cfg);
         let cfg_clone = cfg.clone();
         drop(cfg);

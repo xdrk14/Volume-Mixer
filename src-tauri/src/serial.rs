@@ -353,7 +353,7 @@ fn apply_cycle_stage(
 fn process_frame(app: &AppHandle, state: &Arc<AppState>, nav: &mut NavState, frame: HwFrame) {
     let now = Instant::now();
     let cfg = state.config.get();
-    let mut runtime = state.runtime.lock().unwrap();
+    let mut runtime = state.runtime.lock().unwrap_or_else(|e| e.into_inner());
     let bank = runtime.bank;
 
     for c in 0..CHANNEL_COUNT {
@@ -444,11 +444,11 @@ impl SerialManager {
             .map_err(|e| format!("couldn't open {port_name}: {e}"))?;
 
         // stop whatever reader is currently running before starting a new one
-        if let Some(prev) = self.stop_current.lock().unwrap().take() {
+        if let Some(prev) = self.stop_current.lock().unwrap_or_else(|e| e.into_inner()).take() {
             prev.store(true, Ordering::Relaxed);
         }
         let stop = Arc::new(AtomicBool::new(false));
-        *self.stop_current.lock().unwrap() = Some(stop.clone());
+        *self.stop_current.lock().unwrap_or_else(|e| e.into_inner()) = Some(stop.clone());
 
         state.set_connected(true);
         state.config.update(|c| c.last_port = Some(port_name.clone()));
@@ -459,20 +459,33 @@ impl SerialManager {
             .spawn(move || {
                 let mut reader = BufReader::new(port);
                 let mut nav = NavState::new();
-                let mut line = String::new();
+                // raw bytes, not read_line: read_line errors on any non-UTF-8
+                // byte, and the junk an Arduino sends while the port opens or
+                // the board resets would drop the connection
+                let mut buf: Vec<u8> = Vec::with_capacity(64);
                 loop {
                     if stop.load(Ordering::Relaxed) {
                         break;
                     }
-                    line.clear();
-                    match reader.read_line(&mut line) {
+                    match reader.read_until(b'\n', &mut buf) {
                         Ok(0) => break, // port closed (device unplugged)
                         Ok(_) => {
-                            if let Some(frame) = parse_line(&line) {
-                                process_frame(&app, &state, &mut nav, frame);
+                            if buf.last() == Some(&b'\n') {
+                                let line = String::from_utf8_lossy(&buf);
+                                if let Some(frame) = parse_line(&line) {
+                                    process_frame(&app, &state, &mut nav, frame);
+                                }
+                                buf.clear();
                             }
                         }
-                        Err(e) if e.kind() == std::io::ErrorKind::TimedOut => continue,
+                        Err(e) if e.kind() == std::io::ErrorKind::TimedOut || e.kind() == std::io::ErrorKind::Interrupted => {
+                            // a partial line survives a timeout; noise without
+                            // newlines can't grow the buffer forever
+                            if buf.len() > 256 {
+                                buf.clear();
+                            }
+                            continue;
+                        }
                         Err(_) => break,
                     }
                 }
@@ -622,7 +635,7 @@ mod tests {
     fn solo_mutes_every_bank_and_restores_the_baseline() {
         let state = test_state();
         let cfg = state.config.get();
-        let mut rt = state.runtime.lock().unwrap();
+        let mut rt = state.runtime.lock().unwrap_or_else(|e| e.into_inner());
 
         apply_cycle_stage(&state, &mut rt, &cfg, 0, 0, CycleStage::Solo);
         assert_eq!(rt.solo, Some((0, 0)));

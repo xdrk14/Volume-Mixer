@@ -76,7 +76,7 @@ pub fn assign_channel(
         cfg.muted[bank][channel] = false;
     });
     {
-        let mut runtime = state.runtime.lock().unwrap();
+        let mut runtime = state.runtime.lock().unwrap_or_else(|e| e.into_inner());
         runtime.muted[bank][channel] = false;
     }
     state.emit(&app);

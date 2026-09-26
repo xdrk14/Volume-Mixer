@@ -1,5 +1,4 @@
 mod audio;
-mod capture;
 mod commands;
 mod config;
 mod serial;
@@ -32,7 +31,6 @@ pub fn run() {
             app.manage(serial_mgr);
 
             tray::build(&app_handle)?;
-            capture::start(app_handle.clone(), app_state.clone());
 
             window::position_overlay_top_center(&app_handle);
             // starts collapsed: click-through so it never blocks the game underneath

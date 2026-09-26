@@ -2,194 +2,59 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<link rel="icon" href="data:,">
 <title>Volume Mixer 2.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../shared/hud.css">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="main.css">
 </head>
 <body>
-<div class="page">
-  <header class="top">
-    <div>
-      <div class="eyebrow">Volume Mixer 2.0</div>
-      <h1>Settings</h1>
-    </div>
-    <div class="conn" id="connState">Checking…</div>
+  <header>
+    <h1>Volume Mixer 2.0</h1>
+    <div id="connState" class="badge">checking&hellip;</div>
   </header>
 
-  <div class="layout">
-    <div class="leftCol">
-      <section class="card previewCard">
-        <div class="cardHead"><h2>Preview</h2><span>live · mirrors the overlay</span></div>
-        <div class="desk" id="desk">
-          <canvas id="scene" aria-hidden="true"></canvas>
-          <div id="previewHud"></div>
-          <div class="deskCap" id="deskCap"></div>
-        </div>
-        <p class="note">With <b>Live glass</b> on, the overlay's rim bends your actual game just like this preview, and <b>Background blur</b> frosts it.</p>
-      </section>
-
-      <section class="card">
-        <div class="cardHead"><h2>Controller</h2><span>Arduino Nano · 115200 baud</span></div>
-        <div class="portRow">
-          <select id="portSelect" aria-label="Serial port"></select>
-          <button class="btn" id="refreshPorts" type="button">Refresh</button>
-          <button class="btn primary" id="connectBtn" type="button">Connect</button>
-        </div>
-        <p class="note" id="portHint">The port you connect to is remembered and opened automatically next launch.</p>
-      </section>
+  <section id="portSection">
+    <h2>Serial connection</h2>
+    <div class="row">
+      <select id="portSelect"></select>
+      <button id="refreshPorts">Refresh</button>
+      <button id="connectBtn">Connect</button>
     </div>
+    <p class="hint" id="portHint"></p>
+  </section>
 
-    <form class="settings" onsubmit="return false">
-      <nav class="tabs" role="tablist" aria-label="Settings">
-        <button type="button" role="tab" data-tab="look">Look</button>
-        <button type="button" role="tab" data-tab="see">Visibility</button>
-        <button type="button" role="tab" data-tab="glass">Glass</button>
-        <button type="button" role="tab" data-tab="motion">Motion</button>
-        <button type="button" role="tab" data-tab="apps">Apps</button>
-      </nav>
+  <section id="lookSection">
+    <h2>Overlay look</h2>
+    <div class="setRow">
+      <label for="accentPick">Accent color</label>
+      <div class="ctl"><input type="color" id="accentPick"><button id="accentReset" type="button">White</button></div>
+    </div>
+    <div class="setRow">
+      <label for="radiusRange">Corner roundness</label>
+      <div class="ctl"><input type="range" id="radiusRange" min="4" max="40" step="1"><output id="radiusOut"></output></div>
+    </div>
+    <div class="setRow">
+      <label for="speedRange">Animation speed</label>
+      <div class="ctl"><input type="range" id="speedRange" min="0.5" max="2" step="0.05"><output id="speedOut"></output></div>
+    </div>
+    <div class="setRow">
+      <label for="holdToggle">Hold progress bar</label>
+      <div class="ctl"><label class="switch"><input type="checkbox" id="holdToggle"><span></span></label></div>
+    </div>
+    <p class="hint">Changes show on the overlay right away and are saved automatically.</p>
+  </section>
 
-      <!-- ============ LOOK ============ -->
-      <div class="pane" data-pane="look" role="tabpanel">
-        <div class="sec">
-          <div class="secHead"><h2>Theme</h2><span id="themeName"></span></div>
-          <div class="themes" id="themes" role="radiogroup" aria-label="Theme"></div>
-          <div class="pickRow"><label for="accentPick">Accent</label><input type="color" id="accentPick"><button class="mini" id="accentReset" type="button">Use theme</button></div>
-          <div class="pickRow"><label for="mutePick">Mute</label><input type="color" id="mutePick"><button class="mini" id="muteReset" type="button">Ableton red</button></div>
-        </div>
-        <div class="sec">
-          <div class="secHead"><h2>Selection</h2><span id="styleName"></span></div>
-          <div class="styles" id="styles" role="radiogroup" aria-label="Selection style"></div>
-        </div>
-        <div class="sec">
-          <div class="secHead"><h2>Font</h2><span id="fontName"></span></div>
-          <div class="fonts" id="fonts" role="radiogroup" aria-label="Overlay font"></div>
-        </div>
-      </div>
+  <section id="banksSection">
+    <h2>Channel assignments</h2>
+    <p class="hint">Assign apps to channels from the overlay (click a channel's name while it's expanded). This is a live read-only overview.</p>
+    <div id="banks"></div>
+  </section>
 
-      <!-- ============ VISIBILITY ============ -->
-      <div class="pane" data-pane="see" role="tabpanel">
-        <div class="sec">
-          <div class="secHead"><h2>Quick setup</h2><span>one click</span></div>
-          <div class="presets">
-            <button type="button" class="preset" data-preset="clear"><b>Clear</b><small>see-through glass</small></button>
-            <button type="button" class="preset" data-preset="balanced"><b>Balanced</b><small>frosted, readable</small></button>
-            <button type="button" class="preset" data-preset="solid"><b>Solid</b><small>for white pages</small></button>
-          </div>
-          <p class="secNote tight">Pick one, then fine-tune below.</p>
-        </div>
-        <div class="sec">
-          <div class="secHead"><h2>Background</h2><span>behind the panel</span></div>
-          <div class="pickRow first"><label for="bgPick">Color</label><input type="color" id="bgPick"><button class="mini" id="bgReset" type="button">Black</button></div>
-          <div class="field"><label for="bgA">Opacity</label><output id="bgAOut"></output><input type="range" id="bgA" min="0" max="100" step="1"><div class="help">A fill behind the whole panel. 100 is fully solid.</div></div>
-          <div class="field"><label for="bgBlur">Blur</label><output id="bgBlurOut"></output><input type="range" id="bgBlur" min="0" max="40" step="1"><div class="help">Frosts what's behind the panel. Needs Live glass (Glass tab).</div></div>
-        </div>
-        <div class="sec">
-          <div class="secHead"><h2>Contrast</h2><span>bright games</span></div>
-          <div class="field"><label for="shade">Backdrop shade</label><output id="shadeOut"></output><input type="range" id="shade" min="0" max="100" step="1"><div class="help">Soft dark glow around the panel.</div></div>
-          <div class="field"><label for="halo">Text halo</label><output id="haloOut"></output><input type="range" id="halo" min="0" max="100" step="1"><div class="help">Dark outline behind names, numbers and buttons.</div></div>
-        </div>
-      </div>
+  <footer>
+    <p class="hint">Closing this window keeps Volume Mixer running in the tray. Right-click the tray icon to quit.</p>
+  </footer>
 
-      <!-- ============ GLASS ============ -->
-      <div class="pane" data-pane="glass" role="tabpanel">
-        <div class="sec">
-          <div class="secHead"><h2>Panel</h2></div>
-          <div class="field"><label for="tint">Tint</label><output id="tintOut"></output><input type="range" id="tint" min="0" max="100" step="1"><div class="help">How strongly the glass is tinted.</div></div>
-          <div class="field"><label for="tintDark">Tint darkness</label><output id="tintDarkOut"></output><input type="range" id="tintDark" min="0" max="100" step="1"><div class="help">0 is the theme's tint, 100 is black.</div></div>
-          <div class="field"><label for="iconTint">Icon fill</label><output id="iconTintOut"></output><input type="range" id="iconTint" min="0" max="100" step="1"><div class="help">How solid the app icon tiles are.</div></div>
-          <div class="field"><label for="radius">Corner radius</label><output id="radiusOut"></output><input type="range" id="radius" min="12" max="40" step="1"></div>
-          <div class="field"><label for="rim">Outline light</label><output id="rimOut"></output><input type="range" id="rim" min="0" max="100" step="1"><div class="help">The thin bright edge line and top sheen.</div></div>
-        </div>
-        <div class="sec">
-          <div class="secHead"><h2>Edge lensing</h2><span>bends the game</span></div>
-          <div class="field"><label for="refract">Strength</label><output id="refractOut"></output><input type="range" id="refract" min="0" max="80" step="1"><div class="help">How strongly the rim bends what's behind it. 0 is off.</div></div>
-          <div class="field"><label for="rimW">Width</label><output id="rimWOut"></output><input type="range" id="rimW" min="8" max="60" step="1"><div class="help">How far in from the edge the bend reaches.</div></div>
-          <div class="field"><label for="shine">Shine</label><output id="shineOut"></output><input type="range" id="shine" min="0" max="100" step="1"><div class="help">Bright highlight along the rim.</div></div>
-          <div class="field"><label for="shineSpin">Shine motion</label><output id="shineSpinOut"></output><input type="range" id="shineSpin" min="0" max="100" step="1"><div class="help">How fast the highlight travels. 0 holds it still.</div></div>
-          <div class="field"><label for="rimHot">Selection glow</label><output id="rimHotOut"></output><input type="range" id="rimHot" min="0" max="100" step="1"><div class="help">Rim near the selected channel lights up in its color.</div></div>
-          <details class="more">
-            <summary>More</summary>
-            <div class="field"><label for="chroma">Color split</label><output id="chromaOut"></output><input type="range" id="chroma" min="0" max="100" step="1"><div class="help">Rainbow fringing where the rim bends.</div></div>
-            <div class="field"><label for="blur">Softness</label><output id="blurOut"></output><input type="range" id="blur" min="0" max="6" step="0.5"></div>
-          </details>
-        </div>
-        <div class="sec">
-          <div class="secHead"><h2>Live glass</h2><span id="liveName"></span></div>
-          <div class="seg" data-k="liveGlass" data-type="bool" role="radiogroup" aria-label="Live glass" style="grid-template-columns:repeat(2,1fr)">
-            <button type="button" role="radio" data-v="true">On</button><button type="button" role="radio" data-v="false">Off</button>
-          </div>
-          <p class="secNote tight">Lets the lensing and blur see the game behind the overlay. Only runs while it's open. Not for exclusive-fullscreen games.</p>
-          <div class="subLbl">Screen share, OBS and screenshots</div>
-          <div class="seg" data-k="showInShare" data-type="bool" role="radiogroup" aria-label="Visible in screen share" style="grid-template-columns:repeat(2,1fr)">
-            <button type="button" role="radio" data-v="false">Hidden</button><button type="button" role="radio" data-v="true">Visible</button>
-          </div>
-          <p class="secNote tight" id="shareNote"></p>
-          <details class="more">
-            <summary>Performance</summary>
-            <div class="subLbl">Frame rate</div>
-            <div class="seg" data-k="captureFps" data-type="num" role="radiogroup" aria-label="Live glass frame rate">
-              <button type="button" role="radio" data-v="15">15 fps</button><button type="button" role="radio" data-v="30">30 fps</button><button type="button" role="radio" data-v="60">60 fps</button>
-            </div>
-            <div class="subLbl">Detail</div>
-            <div class="seg" data-k="captureScale" data-type="num" role="radiogroup" aria-label="Live glass detail">
-              <button type="button" role="radio" data-v="2">Sharp</button><button type="button" role="radio" data-v="3">Balanced</button><button type="button" role="radio" data-v="4">Fastest</button>
-            </div>
-          </details>
-        </div>
-      </div>
-
-      <!-- ============ MOTION ============ -->
-      <div class="pane" data-pane="motion" role="tabpanel">
-        <div class="sec">
-          <div class="secHead"><h2>Animation</h2><span id="motionName"></span></div>
-          <div class="sysNote" id="sysNote" hidden><span id="sysNoteTxt"></span><button class="mini" id="sysOverride" type="button"></button></div>
-          <div class="seg" data-k="motion" role="radiogroup" aria-label="Motion style">
-            <button type="button" role="radio" data-v="springy">Springy</button><button type="button" role="radio" data-v="smooth">Smooth</button><button type="button" role="radio" data-v="off">Off</button>
-          </div>
-          <div class="field"><label for="mspeed">Speed</label><output id="mspeedOut"></output><input type="range" id="mspeed" min="0.5" max="2" step="0.05"></div>
-          <div class="subLbl">Open and close</div>
-          <div class="seg four" data-k="openAnim" role="radiogroup" aria-label="Open and close animation">
-            <button type="button" role="radio" data-v="morph">Morph</button><button type="button" role="radio" data-v="pop">Pop</button><button type="button" role="radio" data-v="slide">Slide</button><button type="button" role="radio" data-v="fade">Fade</button>
-          </div>
-          <div class="subLbl">Bank switch</div>
-          <div class="seg" data-k="bankAnim" role="radiogroup" aria-label="Bank switch animation">
-            <button type="button" role="radio" data-v="slide">Slide</button><button type="button" role="radio" data-v="fade">Fade</button><button type="button" role="radio" data-v="none">None</button>
-          </div>
-          <details class="more">
-            <summary>Fine-tune</summary>
-            <div class="field"><label for="bounce">Bounce</label><output id="bounceOut"></output><input type="range" id="bounce" min="0" max="100" step="1"><div class="help">Overshoot on open and on the selection. Springy only.</div></div>
-            <div class="field"><label for="stretch">Selection stretch</label><output id="stretchOut"></output><input type="range" id="stretch" min="0" max="40" step="1"></div>
-            <div class="field"><label for="meterMs">Meter response</label><output id="meterMsOut"></output><input type="range" id="meterMs" min="15" max="200" step="5"><div class="help">Lower is snappier, higher is smoother.</div></div>
-          </details>
-        </div>
-        <div class="sec">
-          <div class="secHead"><h2>Solo shimmer</h2></div>
-          <div class="field"><label for="glint">Strength</label><output id="glintOut"></output><input type="range" id="glint" min="0" max="100" step="1"></div>
-          <div class="field"><label for="speed">Speed</label><output id="speedOut"></output><input type="range" id="speed" min="1" max="5" step="0.1"><div class="help">Seconds per pass across the card.</div></div>
-        </div>
-      </div>
-
-      <!-- ============ APPS ============ -->
-      <div class="pane" data-pane="apps" role="tabpanel">
-        <div class="sec">
-          <div class="secHead"><h2>App colors</h2><span>all banks</span></div>
-          <p class="secNote"><b>Tile</b> is the icon, <b>Highlight</b> is the selection color. Colors follow the app into every bank.</p>
-          <div class="apps" id="appColors"></div>
-        </div>
-      </div>
-
-      <div class="foot">
-        <span>Saved automatically</span>
-        <button class="mini" id="resetBtn" type="button">Reset all</button>
-      </div>
-    </form>
-  </div>
-</div>
-<script src="../shared/hud.js"></script>
 <script src="main.js"></script>
 </body>
 </html>

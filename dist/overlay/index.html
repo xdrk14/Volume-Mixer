@@ -2,17 +2,25 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<link rel="icon" href="data:,">
 <title>Overlay</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../shared/hud.css">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="overlay.css">
 </head>
 <body>
-  <div id="stage"></div>
-  <script src="../shared/hud.js"></script>
-  <script src="overlay.js"></script>
+  <div id="disconnected">NO DEVICE</div>
+  <div id="overlay" class="collapsed">
+    <div id="panel">
+      <div class="sweep"></div>
+      <div id="inner">
+        <div id="ticks"></div>
+        <div id="channelRow"><div id="selFrame"></div></div>
+        <div id="hint"><span id="hintTxt">joystick: &#8593;&#8595; bank &middot; &#8592;&#8594; channel &middot; click: close &middot; hold: cycle mute &rarr; solo &rarr; normal &nbsp;|&nbsp; mouse: click app name to assign</span><span id="holdWrap"><span id="holdLbl"></span><span id="holdBar"><i></i></span></span></div>
+      </div>
+    </div>
+  </div>
+
+<script src="overlay.js"></script>
 </body>
 </html>
